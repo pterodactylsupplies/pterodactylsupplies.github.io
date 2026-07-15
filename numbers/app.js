@@ -86,18 +86,24 @@
     const header = document.createElement("div");
     header.className = "detail-header";
     header.innerHTML = `
+      <p class="kicker">No. ${String(n).padStart(3, "0")}</p>
       <h2 class="detail-number">${n}</h2>
-      <span class="detail-meta">${photos.length} photo${photos.length === 1 ? "" : "s"}</span>
+      <p class="dateline">${photos.length} photo${photos.length === 1 ? "" : "s"} on file</p>
       <nav class="detail-nav">
-        ${n > 1 ? `<a href="#/${n - 1}">← ${n - 1}</a>` : ""}
-        ${n < 100 ? `<a href="#/${n + 1}">${n + 1} →</a>` : ""}
+        ${n > 1 ? `<a href="#/${n - 1}">&larr; ${n - 1}</a>` : ""}
+        ${n < 100 ? `<a href="#/${n + 1}">${n + 1} &rarr;</a>` : ""}
       </nav>`;
     frag.appendChild(header);
+
+    const divider = document.createElement("div");
+    divider.className = "rule-double";
+    frag.appendChild(divider);
 
     if (photos.length) {
       const grid = document.createElement("div");
       grid.className = "photo-grid";
-      for (const p of photos) {
+      photos.forEach((p, i) => {
+        const fig = document.createElement("figure");
         const link = document.createElement("a");
         link.href = imgUrl(p.key);
         link.target = "_blank";
@@ -107,8 +113,13 @@
         img.alt = `Photo of the number ${n}`;
         img.src = imgUrl(p.key);
         link.appendChild(img);
-        grid.appendChild(link);
-      }
+        fig.appendChild(link);
+        const cap = document.createElement("figcaption");
+        cap.className = "tiny caption";
+        cap.textContent = `Plate ${i + 1} of ${photos.length}`;
+        fig.appendChild(cap);
+        grid.appendChild(fig);
+      });
       frag.appendChild(grid);
     } else {
       const empty = document.createElement("p");
@@ -126,8 +137,9 @@
     const box = document.createElement("div");
     box.className = "upload-box";
     box.innerHTML = `
-      <h2>Add a photo of ${n}</h2>
-      <p>JPEG, PNG or WebP. It appears on the board immediately.</p>
+      <p class="kicker">Submit a plate</p>
+      <h3>Add a photo of ${n}</h3>
+      <p class="tiny">JPEG, PNG or WebP &middot; published immediately</p>
       <label class="upload-btn">Choose photo(s)
         <input type="file" accept="image/*" multiple>
       </label>
