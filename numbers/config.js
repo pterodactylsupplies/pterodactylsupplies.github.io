@@ -4,5 +4,5 @@
 // For local development with `npx wrangler dev` use:
 //   http://localhost:8787
 window.CONFIG = {
-  API_BASE: "http://localhost:8787",
+  API_BASE: "https://numbers-gallery-api.greendegrass.workers.dev",
 };
