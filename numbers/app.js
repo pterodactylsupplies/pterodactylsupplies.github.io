@@ -33,6 +33,44 @@
     localStorage.setItem(MY_UPLOADS_KEY, JSON.stringify(mine));
   }
 
+  // ---- form memory — remembers what a contributor typed last time (name,
+  // location, comments, etc.) so they don't retype it on every submission.
+  // The number(s) a photo is tagged with are deliberately never remembered.
+  const FORM_MEMORY_KEY = "numbersGallery.formMemory";
+  const FORM_MEMORY_FIELDS = [
+    ["submitter", ".f-submitter"],
+    ["theirNumber", ".f-their-number"],
+    ["favoriteNumber", ".f-favorite-number"],
+    ["location", ".f-location"],
+    ["foundAt", ".f-found-at"],
+    ["comments", ".f-comments"],
+  ];
+
+  function loadFormMemory() {
+    try {
+      return JSON.parse(localStorage.getItem(FORM_MEMORY_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveFormMemory(meta) {
+    const mem = {};
+    for (const [key] of FORM_MEMORY_FIELDS) {
+      if (meta[key]) mem[key] = meta[key];
+    }
+    localStorage.setItem(FORM_MEMORY_KEY, JSON.stringify(mem));
+  }
+
+  function applyFormMemory(container) {
+    const mem = loadFormMemory();
+    for (const [key, selector] of FORM_MEMORY_FIELDS) {
+      if (!mem[key]) continue;
+      const el = container.querySelector(selector);
+      if (el) el.value = mem[key];
+    }
+  }
+
   async function undoUpload(key, linkEl) {
     const mine = loadMyUploads();
     const token = mine[key];
@@ -213,7 +251,13 @@
   }
 
   // Reverse/forward geocoding via OpenStreetMap's Nominatim (free, no key).
-  // Reverse lookups are trimmed to just town + country — not a full address.
+  // Both are trimmed to just town + country — never a full address.
+  function townCountry(addr) {
+    const town = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
+    const country = addr.country || "";
+    return [town, country].filter(Boolean).join(", ");
+  }
+
   async function reverseGeocode(lat, lon) {
     try {
       const res = await fetch(
@@ -222,10 +266,7 @@
       );
       if (!res.ok) return "";
       const data = await res.json();
-      const addr = data.address || {};
-      const town = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
-      const country = addr.country || "";
-      return [town, country].filter(Boolean).join(", ");
+      return townCountry(data.address || {});
     } catch {
       return "";
     }
@@ -240,15 +281,19 @@
       timer = setTimeout(async () => {
         try {
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+            `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&q=${encodeURIComponent(q)}&limit=5`,
             { headers: { Accept: "application/json" } }
           );
           if (!res.ok) return;
           const data = await res.json();
           datalist.replaceChildren();
+          const seen = new Set();
           for (const place of data) {
+            const label = townCountry(place.address || {});
+            if (!label || seen.has(label)) continue;
+            seen.add(label);
             const opt = document.createElement("option");
-            opt.value = place.display_name;
+            opt.value = label;
             datalist.appendChild(opt);
           }
         } catch {
@@ -651,7 +696,7 @@
     const field = buildTextField("where did you find that", "f-location");
     const input = field.querySelector("input");
     input.setAttribute("list", listId);
-    input.maxLength = 250; // Nominatim's full display_name can be long
+    input.maxLength = 250; // room for a manually-typed longer place name
     block.appendChild(field);
 
     const datalist = document.createElement("datalist");
@@ -736,10 +781,7 @@
     };
   }
 
-  // Required consent checkbox — placed right above each form's submit
-  // button, not with the other shared fields. Starts unchecked (unlike
-  // the metadata convenience checkboxes): this is a legal affirmation,
-  // not a default-on nicety, so it needs an explicit, active check.
+  // Required consent checkbox — placed right above each form's submit button.
   function buildConsentField() {
     const wrap = document.createElement("label");
     wrap.className = "checkbox-label consent-label";
@@ -747,6 +789,7 @@
     checkbox.type = "checkbox";
     checkbox.className = "f-consent";
     checkbox.required = true;
+    checkbox.checked = true;
     wrap.appendChild(checkbox);
 
     const text = document.createElement("span");
@@ -845,6 +888,7 @@
 
     panel.appendChild(buildAlsoShowsField());
     appendSharedFields(panel);
+    applyFormMemory(panel);
 
     const consentField = buildConsentField();
     panel.appendChild(consentField);
@@ -911,6 +955,8 @@
       setStatus(status, "err", "You need to agree to the terms before submitting.");
       return false;
     }
+
+    saveFormMemory(meta);
 
     const recentSigs = loadRecentSignatures();
     let done = 0;
@@ -1105,19 +1151,16 @@
     });
 
     function openModal() {
-      dialog.querySelectorAll(".field-label input, .field-label textarea").forEach((el) => {
-        el.value = "";
-      });
+      // the number field is the one thing that never carries over between
+      // submissions — everything else remembers what was typed last time.
       numberInput.value = findFirstEmpty() || "";
       fileInput.value = "";
       stagedFile = null;
-      // metadata convenience checkboxes default on; consent must be
-      // actively (re)checked every time, so it's excluded here.
-      dialog.querySelectorAll('input[type="checkbox"]:not(.f-consent)').forEach((cb) => {
+      applyFormMemory(dialog);
+      dialog.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
         cb.checked = true;
         cb.dispatchEvent(new Event("change"));
       });
-      consentCheckbox.checked = false;
       status.textContent = "";
       status.className = "upload-status";
       syncSubmitEnabled();
