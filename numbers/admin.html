@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Give or Take — admin</title>
+  <style>
+    :root {
+      --ink: #000; --ink-2: #555; --red: #d40000; --border: #000; --bg: #fff; --hover-bg: #eee;
+      --mono: "Courier New", monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--mono); color: var(--ink); background: var(--bg); font-size: 14px; }
+
+    /* ---- lock screen ---- */
+    #lock { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    #lock form { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 320px; }
+    #lock h1 { font-size: 18px; margin: 0 0 4px; }
+    #lock input { font-family: inherit; font-size: 15px; border: 1px solid var(--border); padding: 8px; background: var(--bg); color: var(--ink); }
+    #lock button { font-family: inherit; font-size: 14px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); padding: 8px; cursor: pointer; }
+    #lock button:hover { background: var(--hover-bg); }
+    #lock .err { color: var(--red); font-size: 13px; min-height: 1.2em; }
+
+    /* ---- panel ---- */
+    #panel[hidden], #lock[hidden] { display: none; }
+    header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    h1 { font-size: 18px; margin: 0; margin-right: auto; }
+    header button { font-family: inherit; font-size: 13px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); padding: 5px 12px; cursor: pointer; }
+    header button:hover { background: var(--hover-bg); }
+    header a { font-size: 13px; color: var(--ink-2); }
+    .status { padding: 8px 20px; color: var(--ink-2); font-size: 13px; }
+    .status.err { color: var(--red); }
+    main { padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { border: 1px solid var(--border); display: flex; flex-direction: column; }
+    .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-bottom: 1px solid var(--border); background: #f4f4f4; }
+    .card-body { padding: 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .card-numbers { font-weight: bold; font-size: 15px; }
+    .card-meta { font-size: 12px; color: var(--ink-2); line-height: 1.5; word-break: break-word; }
+    .card-comment { font-size: 12px; font-style: italic; color: var(--ink-2); }
+    .card-key { font-size: 10px; color: var(--ink-2); word-break: break-all; }
+    .card-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 8px; }
+    .card button.delete { font-family: inherit; font-size: 12px; border: 1px solid var(--red); background: var(--bg); color: var(--red); padding: 5px 10px; cursor: pointer; flex: 1; }
+    .card button.delete:hover { background: var(--red); color: #fff; }
+    .card button.delete:disabled { opacity: 0.5; cursor: not-allowed; }
+    .card.removed { opacity: 0.35; }
+    .empty { color: var(--ink-2); padding: 48px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="lock">
+    <form id="lockForm">
+      <h1>Give or Take — admin</h1>
+      <input id="password" type="password" placeholder="admin token" autocomplete="off" autofocus>
+      <button type="submit">unlock</button>
+      <div class="err" id="lockErr"></div>
+    </form>
+  </div>
+
+  <div id="panel" hidden>
+    <header>
+      <h1>Give or Take — admin</h1>
+      <button id="loadBtn" type="button">refresh</button>
+      <a href="#" id="lockLink">lock</a>
+    </header>
+    <div id="status" class="status"></div>
+    <main>
+      <div id="grid" class="grid"></div>
+    </main>
+  </div>
+
+  <script>
+    // Same origin as the site itself, so this reaches the API without any
+    // CORS changes on the worker. The "password" is just the admin token —
+    // there's no separate secret to manage, and it's what deletes actually
+    // require server-side regardless of this page's lock screen.
+    const API_BASE = "https://numbers-gallery-api.greendegrass.workers.dev";
+    const TOKEN_KEY = "numbersAdmin.token";
+
+    const lockEl = document.getElementById("lock");
+    const panelEl = document.getElementById("panel");
+    const lockForm = document.getElementById("lockForm");
+    const passwordInput = document.getElementById("password");
+    const lockErr = document.getElementById("lockErr");
+    const statusEl = document.getElementById("status");
+    const grid = document.getElementById("grid");
+
+    function token() {
+      return sessionStorage.getItem(TOKEN_KEY) || "";
+    }
+
+    function unlock(withToken) {
+      sessionStorage.setItem(TOKEN_KEY, withToken);
+      lockEl.hidden = true;
+      panelEl.hidden = false;
+      loadPhotos();
+    }
+
+    function lock() {
+      sessionStorage.removeItem(TOKEN_KEY);
+      panelEl.hidden = true;
+      lockEl.hidden = false;
+      passwordInput.value = "";
+      passwordInput.focus();
+    }
+
+    lockForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = passwordInput.value.trim();
+      if (!val) { lockErr.textContent = "Enter the admin token."; return; }
+      lockErr.textContent = "";
+      unlock(val);
+    });
+
+    document.getElementById("lockLink").addEventListener("click", (e) => {
+      e.preventDefault();
+      lock();
+    });
+
+    function setStatus(text, isErr) {
+      statusEl.textContent = text;
+      statusEl.className = "status" + (isErr ? " err" : "");
+    }
+
+    async function loadPhotos() {
+      setStatus("Loading…");
+      grid.replaceChildren();
+      try {
+        const res = await fetch(`${API_BASE}/api/photos`);
+        if (!res.ok) throw new Error(`API responded ${res.status}`);
+        const byNumber = await res.json();
+
+        const byKey = new Map();
+        for (const num of Object.keys(byNumber)) {
+          for (const p of byNumber[num]) {
+            if (!byKey.has(p.key)) byKey.set(p.key, p);
+          }
+        }
+        const photos = [...byKey.values()].sort((a, b) => new Date(b.uploaded) - new Date(a.uploaded));
+
+        if (!photos.length) {
+          grid.appendChild(Object.assign(document.createElement("div"), { className: "empty", textContent: "No photos." }));
+        } else {
+          for (const p of photos) grid.appendChild(buildCard(p));
+        }
+        setStatus(`${photos.length} photo${photos.length === 1 ? "" : "s"}.`);
+      } catch (err) {
+        setStatus(`Failed to load: ${err.message}`, true);
+      }
+    }
+
+    function buildCard(p) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const img = document.createElement("img");
+      img.src = `${API_BASE}/img/${p.key}`;
+      img.loading = "lazy";
+      card.appendChild(img);
+
+      const body = document.createElement("div");
+      body.className = "card-body";
+
+      const numbers = document.createElement("div");
+      numbers.className = "card-numbers";
+      numbers.textContent = p.numbers.join(", ");
+      body.appendChild(numbers);
+
+      const metaParts = [];
+      if (p.submitter) metaParts.push(p.submitter);
+      if (p.theirNumber) metaParts.push(`#${p.theirNumber}`);
+      if (p.location) metaParts.push(p.location);
+      if (p.foundAt) metaParts.push(`found ${p.foundAt}`);
+      if (p.uploaded) metaParts.push(`published ${new Date(p.uploaded).toLocaleString()}`);
+      const meta = document.createElement("div");
+      meta.className = "card-meta";
+      meta.textContent = metaParts.join(" · ");
+      body.appendChild(meta);
+
+      if (p.comments) {
+        const comment = document.createElement("div");
+        comment.className = "card-comment";
+        comment.textContent = `"${p.comments}"`;
+        body.appendChild(comment);
+      }
+
+      const keyEl = document.createElement("div");
+      keyEl.className = "card-key";
+      keyEl.textContent = p.key;
+      body.appendChild(keyEl);
+
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "delete";
+      delBtn.textContent = "delete";
+      delBtn.addEventListener("click", () => deletePhoto(p, card, delBtn));
+      actions.appendChild(delBtn);
+      body.appendChild(actions);
+
+      card.appendChild(body);
+      return card;
+    }
+
+    async function deletePhoto(p, card, btn) {
+      if (!confirm(`Delete this photo (numbers: ${p.numbers.join(", ")})? This can't be undone.`)) return;
+
+      btn.disabled = true;
+      btn.textContent = "deleting…";
+      try {
+        const res = await fetch(`${API_BASE}/api/photo/${encodeURIComponent(p.key)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token()}` },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || `delete failed (${res.status})`);
+        card.classList.add("removed");
+        btn.textContent = "deleted";
+        setStatus(`Deleted ${p.key}.`);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "delete";
+        setStatus(`Delete failed: ${err.message}`, true);
+      }
+    }
+
+    document.getElementById("loadBtn").addEventListener("click", loadPhotos);
+
+    if (token()) unlock(token());
+  </script>
+</body>
+</html>
