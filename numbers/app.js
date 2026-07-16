@@ -156,7 +156,7 @@
   // No library — this is a small hand-rolled reader scoped to just the two
   // tags we need. Returns {} for non-JPEGs or files with no EXIF segment.
   async function readExif(file) {
-    if (file.type !== "image/jpeg") return {};
+    if (file.type !== "image/jpeg" && file.type !== "image/jpg") return {};
     let view;
     try {
       const buf = await file.slice(0, 128 * 1024).arrayBuffer();
@@ -305,6 +305,10 @@
 
   // Applies EXIF-derived location/date to a form's fields, if their
   // "use metadata" checkboxes are checked. Called once a file is staged.
+  // Many phones don't embed GPS/date at all (location tagging off, HEIC
+  // stripped on conversion, etc.) — when that happens we uncheck the box
+  // and unlock the field instead of leaving it stuck empty and disabled,
+  // since that reads as "broken" rather than "no data in this photo".
   async function applyExifMetadata(container, file) {
     const exif = await readExif(file);
 
@@ -314,8 +318,11 @@
       if (exif.lat != null && exif.lon != null) {
         locInput.value = "looking up…";
         locInput.value = (await reverseGeocode(exif.lat, exif.lon)) || "";
-      } else {
-        locInput.value = "";
+      }
+      if (!locInput.value) {
+        locCheckbox.checked = false;
+        locCheckbox.dispatchEvent(new Event("change"));
+        locInput.placeholder = "no location found in this photo — type it in";
       }
     }
 
@@ -323,6 +330,10 @@
     const whenInput = container.querySelector(".f-found-at");
     if (whenCheckbox && whenCheckbox.checked) {
       whenInput.value = exifDateToInputValue(exif.takenAt);
+      if (!whenInput.value) {
+        whenCheckbox.checked = false;
+        whenCheckbox.dispatchEvent(new Event("change"));
+      }
     }
   }
 
