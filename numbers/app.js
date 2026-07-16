@@ -33,43 +33,6 @@
     localStorage.setItem(MY_UPLOADS_KEY, JSON.stringify(mine));
   }
 
-  // "7, 42, 7" -> [7, 42] — parses a free-text number list, dedupes, drops junk.
-  // A single picture can be tagged with more than one number (it might show
-  // several), so every number-entry field in this file accepts a list.
-  function parseNumberList(raw) {
-    if (!raw) return [];
-    const seen = new Set();
-    const out = [];
-    for (const part of String(raw).split(",")) {
-      const n = parseInt(part.trim(), 10);
-      if (Number.isInteger(n) && !seen.has(n)) {
-        seen.add(n);
-        out.push(n);
-      }
-    }
-    return out;
-  }
-
-  // ---- lightweight duplicate-upload guard ----
-  // Remembers (name + size) of pictures already uploaded this browser
-  // session, so re-selecting the same file doesn't silently create a
-  // second copy. Not persisted across tabs/restarts on purpose — it's a
-  // "did you mean to do that again?" nudge, not a hard block.
-  const RECENT_SIG_KEY = "numbersGallery.recentUploadSignatures";
-  const fileSignature = (file) => `${file.name}::${file.size}`;
-
-  function loadRecentSignatures() {
-    try {
-      return new Set(JSON.parse(sessionStorage.getItem(RECENT_SIG_KEY) || "[]"));
-    } catch {
-      return new Set();
-    }
-  }
-
-  function saveRecentSignatures(set) {
-    sessionStorage.setItem(RECENT_SIG_KEY, JSON.stringify([...set].slice(-50)));
-  }
-
   async function undoUpload(key, linkEl) {
     const mine = loadMyUploads();
     const token = mine[key];
@@ -90,6 +53,234 @@
     }
   }
 
+  // "7, 42, 7" -> [7, 42] — parses a free-text number list, dedupes, drops junk.
+  function parseNumberList(raw) {
+    if (!raw) return [];
+    const seen = new Set();
+    const out = [];
+    for (const part of String(raw).split(",")) {
+      const n = parseInt(part.trim(), 10);
+      if (Number.isInteger(n) && !seen.has(n)) {
+        seen.add(n);
+        out.push(n);
+      }
+    }
+    return out;
+  }
+
+  // ---- lightweight duplicate-upload guard ----
+  const RECENT_SIG_KEY = "numbersGallery.recentUploadSignatures";
+  const fileSignature = (file) => `${file.name}::${file.size}`;
+
+  function loadRecentSignatures() {
+    try {
+      return new Set(JSON.parse(sessionStorage.getItem(RECENT_SIG_KEY) || "[]"));
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveRecentSignatures(set) {
+    sessionStorage.setItem(RECENT_SIG_KEY, JSON.stringify([...set].slice(-50)));
+  }
+
+  // "2026-07-16T10:00:00Z" -> "3 days ago"
+  function relativeTime(iso) {
+    const sec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    const units = [
+      [60, "second"], [60, "minute"], [24, "hour"], [7, "day"], [4.345, "week"],
+      [12, "month"], [Infinity, "year"],
+    ];
+    let value = sec;
+    for (const [size, name] of units) {
+      if (value < size || size === Infinity) {
+        value = Math.floor(value);
+        if (name === "second") return "just now";
+        return value === 1 ? `1 ${name} ago` : `${value} ${name}s ago`;
+      }
+      value /= size;
+    }
+    return "a while ago";
+  }
+
+  // "2026-07-16" -> "Jul 16, 2026"
+  function formatFoundAt(dateStr) {
+    try {
+      const d = new Date(`${dateStr}T00:00:00`);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  }
+
+  // ---- EXIF (GPS + capture date), read straight from the JPEG bytes ----
+  // No library — this is a small hand-rolled reader scoped to just the two
+  // tags we need. Returns {} for non-JPEGs or files with no EXIF segment.
+  async function readExif(file) {
+    if (file.type !== "image/jpeg") return {};
+    let view;
+    try {
+      const buf = await file.slice(0, 128 * 1024).arrayBuffer();
+      view = new DataView(buf);
+    } catch {
+      return {};
+    }
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return {};
+
+    let offset = 2;
+    let exifOffset = null;
+    while (offset < view.byteLength - 4) {
+      const marker = view.getUint16(offset);
+      if ((marker & 0xff00) !== 0xff00) break;
+      if (marker === 0xffd9 || marker === 0xffda) break;
+      const size = view.getUint16(offset + 2);
+      if (marker === 0xffe1 && offset + 10 <= view.byteLength &&
+          view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0x0000) {
+        exifOffset = offset + 10;
+        break;
+      }
+      offset += 2 + size;
+    }
+    if (exifOffset == null || exifOffset + 8 > view.byteLength) return {};
+
+    try {
+      const little = view.getUint16(exifOffset) === 0x4949;
+      const get16 = (o) => view.getUint16(o, little);
+      const get32 = (o) => view.getUint32(o, little);
+
+      const readIFD = (ifdOffset) => {
+        const entries = {};
+        const count = get16(ifdOffset);
+        for (let i = 0; i < count; i++) {
+          const eo = ifdOffset + 2 + i * 12;
+          entries[get16(eo)] = { type: get16(eo + 2), num: get32(eo + 4), valueOffset: eo + 8 };
+        }
+        return entries;
+      };
+      const rational = (o) => {
+        const num = get32(o), den = get32(o + 4);
+        return den ? num / den : 0;
+      };
+      const readString = (entry) => {
+        const len = entry.num;
+        const at = len <= 4 ? entry.valueOffset : exifOffset + get32(entry.valueOffset);
+        let s = "";
+        for (let i = 0; i < len - 1; i++) s += String.fromCharCode(view.getUint8(at + i));
+        return s;
+      };
+      const readRationalArray = (entry) => {
+        const at = exifOffset + get32(entry.valueOffset);
+        const out = [];
+        for (let i = 0; i < entry.num; i++) out.push(rational(at + i * 8));
+        return out;
+      };
+
+      const ifd0 = readIFD(exifOffset + get32(exifOffset + 4));
+      const result = {};
+
+      if (ifd0[0x0132]) result.takenAt = readString(ifd0[0x0132]);
+      if (ifd0[0x8769]) {
+        const subIfd = readIFD(exifOffset + get32(ifd0[0x8769].valueOffset));
+        if (subIfd[0x9003]) result.takenAt = readString(subIfd[0x9003]);
+      }
+
+      if (ifd0[0x8825]) {
+        const gpsIfd = readIFD(exifOffset + get32(ifd0[0x8825].valueOffset));
+        if (gpsIfd[1] && gpsIfd[2] && gpsIfd[3] && gpsIfd[4]) {
+          const latRef = readString(gpsIfd[1]);
+          const [d1, m1, s1] = readRationalArray(gpsIfd[2]);
+          const lonRef = readString(gpsIfd[3]);
+          const [d2, m2, s2] = readRationalArray(gpsIfd[4]);
+          let lat = d1 + m1 / 60 + s1 / 3600;
+          let lon = d2 + m2 / 60 + s2 / 3600;
+          if (latRef === "S") lat = -lat;
+          if (lonRef === "W") lon = -lon;
+          result.lat = lat;
+          result.lon = lon;
+        }
+      }
+      return result;
+    } catch {
+      return {}; // malformed EXIF — just skip it
+    }
+  }
+
+  // "2026:07:16 10:00:00" -> "2026-07-16"
+  function exifDateToInputValue(exifDate) {
+    if (!exifDate || exifDate.length < 10) return "";
+    return exifDate.slice(0, 10).replace(/:/g, "-");
+  }
+
+  // Reverse/forward geocoding via OpenStreetMap's Nominatim (free, no key).
+  // Reverse lookups are trimmed to just town + country — not a full address.
+  async function reverseGeocode(lat, lon) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${lat}&lon=${lon}&zoom=10`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!res.ok) return "";
+      const data = await res.json();
+      const addr = data.address || {};
+      const town = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
+      const country = addr.country || "";
+      return [town, country].filter(Boolean).join(", ");
+    } catch {
+      return "";
+    }
+  }
+
+  function wireLocationAutocomplete(input, datalist) {
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 3) return;
+      timer = setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+            { headers: { Accept: "application/json" } }
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          datalist.replaceChildren();
+          for (const place of data) {
+            const opt = document.createElement("option");
+            opt.value = place.display_name;
+            datalist.appendChild(opt);
+          }
+        } catch {
+          /* ignore — autocomplete is a nicety, not required */
+        }
+      }, 400);
+    });
+  }
+
+  // Applies EXIF-derived location/date to a form's fields, if their
+  // "use metadata" checkboxes are checked. Called once a file is staged.
+  async function applyExifMetadata(container, file) {
+    const exif = await readExif(file);
+
+    const locCheckbox = container.querySelector(".f-location-metadata");
+    const locInput = container.querySelector(".f-location");
+    if (locCheckbox && locCheckbox.checked) {
+      if (exif.lat != null && exif.lon != null) {
+        locInput.value = "looking up…";
+        locInput.value = (await reverseGeocode(exif.lat, exif.lon)) || "";
+      } else {
+        locInput.value = "";
+      }
+    }
+
+    const whenCheckbox = container.querySelector(".f-found-at-metadata");
+    const whenInput = container.querySelector(".f-found-at");
+    if (whenCheckbox && whenCheckbox.checked) {
+      whenInput.value = exifDateToInputValue(exif.takenAt);
+    }
+  }
+
   async function loadPhotos() {
     const res = await fetch(`${API}/api/photos`);
     if (!res.ok) throw new Error(`API responded ${res.status}`);
@@ -97,7 +288,7 @@
   }
 
   // Numbers 1-100 get their own grid cell; anything else (0, negatives,
-  // 101+) is grouped under the "OTHERS" bucket.
+  // 101+) is grouped under the "misc" bucket.
   function currentNumber() {
     const m = location.hash.match(/^#\/?(-?\d{1,6})$/);
     if (!m) return null;
@@ -105,16 +296,21 @@
     return n >= 1 && n <= 100 ? n : null;
   }
 
-  function othersEntries() {
+  function findFirstEmpty() {
+    for (let i = 1; i <= 100; i++) {
+      if (!(photosByNumber[i] && photosByNumber[i].length)) return i;
+    }
+    return null;
+  }
+
+  function miscEntries() {
     const seen = new Set();
     const entries = [];
     for (const [k, list] of Object.entries(photosByNumber)) {
       const n = parseInt(k, 10);
       if (n >= 1 && n <= 100) continue;
       for (const p of list) {
-        // the same picture can be tagged under more than one out-of-range
-        // number — list it once, not once per tag.
-        if (seen.has(p.key)) continue;
+        if (seen.has(p.key)) continue; // dedupe if tagged with >1 out-of-range number
         seen.add(p.key);
         entries.push(p);
       }
@@ -123,15 +319,66 @@
     return entries;
   }
 
+  function setView(view) {
+    document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms");
+    document.body.classList.add(`view-${view}`);
+  }
+
+  function setWordmark(text) {
+    const wm = document.getElementById("home-link");
+    if (wm) wm.textContent = text;
+  }
+
   function render() {
-    if (location.hash === "#/others") {
-      renderOthers();
+    if (location.hash === "#/terms") {
+      setView("terms");
+      renderTerms();
+    } else if (location.hash === "#/misc") {
+      setView("misc");
+      renderMisc();
     } else {
       const n = currentNumber();
-      if (n) renderDetail(n);
-      else renderGrid();
+      if (n) {
+        setView("detail");
+        renderDetail(n);
+      } else {
+        setView("grid");
+        renderGrid();
+      }
     }
     window.scrollTo(0, 0);
+  }
+
+  function renderTerms() {
+    document.title = "give or take — terms";
+    setWordmark("The Game Where We Collect Numbers");
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const heading = document.createElement("h2");
+    heading.className = "terms-heading";
+    heading.textContent = "Photo terms";
+    section.appendChild(heading);
+
+    const paragraphs = [
+      "By submitting a photo to Give or Take, you confirm it's yours to share, and you give anyone — us, other visitors, anyone on the internet — permission to use, copy, modify, print, or republish it, for any purpose, without asking first and without paying you. You're not giving up ownership of the photo — you're just saying nobody needs your permission to use it.",
+      "Don't submit a photo you don't have the rights to share, or one that includes other identifiable people without their OK.",
+      "Photos publish immediately and are not reviewed before appearing on the site.",
+    ];
+    paragraphs.forEach((text) => {
+      const p = document.createElement("p");
+      p.className = "terms-copy";
+      p.textContent = text;
+      section.appendChild(p);
+    });
+
+    app.replaceChildren(section);
   }
 
   function renderProgress() {
@@ -139,334 +386,530 @@
       const n = parseInt(k, 10);
       return n >= 1 && n <= 100 && list.length > 0;
     }).length;
-    // count unique pictures, not tag count — a picture tagged under two
-    // numbers is still one picture.
-    const uniqueKeys = new Set();
-    for (const list of Object.values(photosByNumber)) {
-      for (const p of list) uniqueKeys.add(p.key);
+    progressEl.innerHTML = `<strong>${collected}</strong> of 100 collected`;
+  }
+
+  function buildCell(label, photos, href) {
+    const filled = photos.length > 0;
+    const cell = document.createElement("a");
+    cell.href = href;
+    cell.className = `cell ${filled ? "filled" : "empty"}`;
+    cell.setAttribute("aria-label", `${label}, ${photos.length} pictures`);
+
+    if (filled) {
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = `Picture of ${label}`;
+      img.src = imgUrl(photos[photos.length - 1].key);
+      cell.appendChild(img);
+
+      const plus = document.createElement("span");
+      plus.className = "cell-mark cell-mark-plus";
+      plus.textContent = "+";
+      cell.appendChild(plus);
+
+      if (photos.length > 1) {
+        const count = document.createElement("span");
+        count.className = "cell-mark cell-mark-count";
+        count.textContent = `×${photos.length}`;
+        cell.appendChild(count);
+      }
+    } else {
+      const numberLabel = document.createElement("span");
+      numberLabel.className = "cell-empty-label";
+      numberLabel.textContent = label;
+      cell.appendChild(numberLabel);
+
+      const plus = document.createElement("span");
+      plus.className = "cell-mark cell-mark-plus cell-mark-empty";
+      plus.textContent = "+";
+      cell.appendChild(plus);
     }
-    const total = uniqueKeys.size;
-    progressEl.innerHTML =
-      `<strong>${collected}</strong> of 100 numbers collected · ${total} picture${total === 1 ? "" : "s"}`;
+    return cell;
   }
 
   function renderGrid() {
+    document.title = "numberwang";
+    setWordmark("The Game Where We Collect Numbers");
     const grid = document.createElement("div");
     grid.className = "number-grid";
     for (let i = 1; i <= 100; i++) {
-      const photos = photosByNumber[i] || [];
-      const cell = document.createElement("a");
-      cell.href = `#/${i}`;
-      cell.className = `cell ${photos.length ? "filled" : "empty"}`;
-      cell.setAttribute("aria-label", `Number ${i}, ${photos.length} pictures`);
-
-      const num = document.createElement("span");
-      num.className = "cell-number";
-      num.textContent = i;
-
-      if (photos.length) {
-        const img = document.createElement("img");
-        img.loading = "lazy";
-        img.alt = `Picture of the number ${i}`;
-        img.src = imgUrl(photos[photos.length - 1].key);
-        cell.appendChild(img);
-        if (photos.length > 1) {
-          const count = document.createElement("span");
-          count.className = "cell-count";
-          count.textContent = photos.length;
-          cell.appendChild(count);
-        }
-      }
-      cell.appendChild(num);
-      grid.appendChild(cell);
+      grid.appendChild(buildCell(String(i), photosByNumber[i] || [], `#/${i}`));
     }
+    grid.appendChild(buildCell("misc", miscEntries(), "#/misc"));
 
-    const others = othersEntries();
-    const othersCell = document.createElement("a");
-    othersCell.href = "#/others";
-    othersCell.className = `cell others ${others.length ? "filled" : "empty"}`;
-    othersCell.setAttribute("aria-label", `Others, ${others.length} pictures`);
-    if (others.length) {
-      const img = document.createElement("img");
-      img.loading = "lazy";
-      img.alt = "A picture from the Others bucket";
-      img.src = imgUrl(others[others.length - 1].key);
-      othersCell.appendChild(img);
-      if (others.length > 1) {
-        const count = document.createElement("span");
-        count.className = "cell-count";
-        count.textContent = others.length;
-        othersCell.appendChild(count);
-      }
-    }
-    const othersLabel = document.createElement("span");
-    othersLabel.className = "cell-number";
-    othersLabel.textContent = "OTHERS";
-    othersCell.appendChild(othersLabel);
-    grid.appendChild(othersCell);
+    const section = document.createElement("section");
+    section.className = "grid-section";
+    section.appendChild(grid);
 
-    app.replaceChildren(grid);
+    app.replaceChildren(section);
     renderProgress();
   }
 
-  function renderOthers() {
-    const entries = othersEntries();
-    const mine = loadMyUploads();
-    const frag = document.createDocumentFragment();
+  function buildGalleryItem(p, i, total, currentN, mine) {
+    const item = document.createElement("div");
+    item.className = "gallery-item";
 
-    const back = document.createElement("a");
-    back.className = "back-link";
-    back.href = "#";
-    back.textContent = "← All numbers";
-    frag.appendChild(back);
+    const link = document.createElement("a");
+    link.href = imgUrl(p.key);
+    link.target = "_blank";
+    link.rel = "noopener";
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = currentN != null ? `Picture of the number ${currentN}` : `Picture marked ${p.numbers.join(", ")}`;
+    img.src = imgUrl(p.key);
+    link.appendChild(img);
+    item.appendChild(link);
 
-    const header = document.createElement("div");
-    header.className = "detail-header";
-    header.innerHTML = `
-      <p class="kicker">Others</p>
-      <h2 class="detail-number">&infin;</h2>
-      <p class="dateline">${entries.length} picture${entries.length === 1 ? "" : "s"} on file</p>`;
-    frag.appendChild(header);
+    const caption = document.createElement("div");
+    caption.className = "gallery-caption";
+    caption.textContent = `number ${i + 1} of ${total}`;
+    item.appendChild(caption);
 
-    const divider = document.createElement("div");
-    divider.className = "rule-double";
-    frag.appendChild(divider);
-
-    if (entries.length) {
-      const grid = document.createElement("div");
-      grid.className = "photo-grid";
-      entries.forEach((p) => {
-        const fig = document.createElement("figure");
-        const link = document.createElement("a");
-        link.href = imgUrl(p.key);
-        link.target = "_blank";
-        link.rel = "noopener";
-        const img = document.createElement("img");
-        img.loading = "lazy";
-        img.alt = `Picture marked ${p.numbers.join(", ")}`;
-        img.src = imgUrl(p.key);
-        link.appendChild(img);
-        fig.appendChild(link);
-
-        const cap = document.createElement("figcaption");
-
-        if (p.caption) {
-          const title = document.createElement("span");
-          title.className = "entry-title";
-          title.textContent = p.caption;
-          cap.appendChild(title);
-        }
-
-        const meta = document.createElement("span");
-        meta.className = "tiny caption";
-        const metaBits = [`marked ${p.numbers.join(", ")}`];
-        if (p.submitter) metaBits.push(`by ${p.submitter}`);
-        meta.textContent = metaBits.join(" · ");
-        cap.appendChild(meta);
-
-        if (mine[p.key]) {
-          const undo = document.createElement("a");
-          undo.href = "#";
-          undo.className = "tiny undo-link";
-          undo.textContent = "[remove]";
-          undo.addEventListener("click", (e) => {
-            e.preventDefault();
-            if (confirm("Remove this picture? This can't be undone.")) {
-              undoUpload(p.key, undo);
-            }
-          });
-          cap.appendChild(undo);
-        }
-
-        fig.appendChild(cap);
-        grid.appendChild(fig);
-      });
-      frag.appendChild(grid);
+    const meta = document.createElement("div");
+    meta.className = "gallery-meta";
+    const name = p.submitter || "anonymous";
+    const bits = [p.theirNumber ? `${name} (${p.theirNumber})` : name];
+    if (currentN != null) {
+      const alsoOn = (p.numbers || []).filter((x) => x !== currentN);
+      if (alsoOn.length) bits.push(`also on ${alsoOn.join(", ")}`);
     } else {
-      const empty = document.createElement("p");
-      empty.className = "no-photos";
-      empty.textContent = "Nothing here yet — numbers that don't fit 1–100 land in this bucket.";
-      frag.appendChild(empty);
+      bits.push(`marked ${p.numbers.join(", ")}`);
+    }
+    if (p.location) bits.push(p.location);
+    if (p.foundAt) bits.push(`found ${formatFoundAt(p.foundAt)}`);
+    bits.push(`published ${relativeTime(p.uploaded)}`);
+    meta.textContent = bits.join(" · ");
+    item.appendChild(meta);
+
+    if (p.comments) {
+      const comment = document.createElement("div");
+      comment.className = "gallery-comment";
+      comment.textContent = `“${p.comments}”`;
+      item.appendChild(comment);
     }
 
-    const hint = document.createElement("p");
-    hint.className = "tiny others-hint";
-    hint.textContent = "Use “+ add a number” above to add something here.";
-    frag.appendChild(hint);
+    if (mine[p.key]) {
+      const undo = document.createElement("a");
+      undo.href = "#";
+      undo.className = "undo-link";
+      undo.textContent = "[remove]";
+      undo.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (confirm("Remove this picture? This can't be undone.")) {
+          undoUpload(p.key, undo);
+        }
+      });
+      item.appendChild(document.createElement("br"));
+      item.appendChild(undo);
+    }
 
-    app.replaceChildren(frag);
-    renderProgress();
+    return item;
   }
 
   function renderDetail(n) {
+    document.title = `numberwang (${n})`;
+    setWordmark(`Give or Take ${n}`);
     const photos = photosByNumber[n] || [];
     const mine = loadMyUploads();
-    const frag = document.createDocumentFragment();
+    const section = document.createElement("section");
+    section.className = "detail-section";
 
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← All numbers";
-    frag.appendChild(back);
+    back.textContent = "← back to grid";
+    section.appendChild(back);
 
-    const header = document.createElement("div");
-    header.className = "detail-header";
-    header.innerHTML = `
-      <p class="kicker">No. ${String(n).padStart(3, "0")}</p>
-      <h2 class="detail-number">${n}</h2>
-      <p class="dateline">${photos.length} picture${photos.length === 1 ? "" : "s"} on file</p>
-      <nav class="detail-nav">
-        ${n > 1 ? `<a href="#/${n - 1}">&larr; ${n - 1}</a>` : ""}
-        ${n < 100 ? `<a href="#/${n + 1}">${n + 1} &rarr;</a>` : ""}
-      </nav>`;
-    frag.appendChild(header);
+    const prevN = n <= 1 ? 100 : n - 1;
+    const nextN = n >= 100 ? 1 : n + 1;
 
-    const divider = document.createElement("div");
-    divider.className = "rule-double";
-    frag.appendChild(divider);
+    const navRow = document.createElement("div");
+    navRow.className = "detail-nav-row";
+    navRow.innerHTML = `
+      <a href="#/${prevN}">&larr; ${prevN}</a>
+      <div class="detail-center">
+        <div class="detail-number">${n}</div>
+        <div class="detail-meta">${photos.length} picture${photos.length === 1 ? "" : "s"} on file</div>
+      </div>
+      <a href="#/${nextN}">${nextN} &rarr;</a>`;
+    section.appendChild(navRow);
 
     if (photos.length) {
-      const grid = document.createElement("div");
-      grid.className = "photo-grid";
-      photos.forEach((p, i) => {
-        const fig = document.createElement("figure");
-        const link = document.createElement("a");
-        link.href = imgUrl(p.key);
-        link.target = "_blank";
-        link.rel = "noopener";
-        const img = document.createElement("img");
-        img.loading = "lazy";
-        img.alt = `Picture of the number ${n}`;
-        img.src = imgUrl(p.key);
-        link.appendChild(img);
-        fig.appendChild(link);
-
-        const cap = document.createElement("figcaption");
-
-        if (p.caption) {
-          const title = document.createElement("span");
-          title.className = "entry-title";
-          title.textContent = p.caption;
-          cap.appendChild(title);
-        }
-
-        const meta = document.createElement("span");
-        meta.className = "tiny caption";
-        const metaBits = [];
-        if (p.submitter) metaBits.push(`by ${p.submitter}`);
-        const alsoOn = (p.numbers || []).filter((x) => x !== n);
-        if (alsoOn.length) metaBits.push(`also on ${alsoOn.join(", ")}`);
-        metaBits.push(`Plate ${i + 1} of ${photos.length}`);
-        meta.textContent = metaBits.join(" · ");
-        cap.appendChild(meta);
-
-        if (mine[p.key]) {
-          const undo = document.createElement("a");
-          undo.href = "#";
-          undo.className = "tiny undo-link";
-          undo.textContent = "[remove]";
-          undo.addEventListener("click", (e) => {
-            e.preventDefault();
-            if (confirm("Remove this picture? This can't be undone.")) {
-              undoUpload(p.key, undo);
-            }
-          });
-          cap.appendChild(undo);
-        }
-
-        fig.appendChild(cap);
-        grid.appendChild(fig);
-      });
-      frag.appendChild(grid);
+      const gallery = document.createElement("div");
+      gallery.id = "detail-gallery";
+      photos.forEach((p, i) => gallery.appendChild(buildGalleryItem(p, i, photos.length, n, mine)));
+      section.appendChild(gallery);
     } else {
-      const empty = document.createElement("p");
+      const empty = document.createElement("div");
       empty.className = "no-photos";
-      empty.textContent = `Nobody has spotted a ${n} yet — be the first!`;
-      frag.appendChild(empty);
+      empty.textContent = `Nobody uploaded a ${n} yet - be the first!`;
+      section.appendChild(empty);
     }
 
-    frag.appendChild(buildUploadBox(n));
-    app.replaceChildren(frag);
+    section.appendChild(buildUploadPanel(n));
+    app.replaceChildren(section);
     renderProgress();
   }
 
-  // ---- shared upload form fields (name/caption inputs), used by both the
-  // inline per-number box and the global "add any number" modal.
-  function buildMetaFields() {
-    const wrap = document.createElement("div");
-    wrap.className = "upload-fields";
-    wrap.innerHTML = `
-      <input type="text" class="f-caption" placeholder="what is it" maxlength="80">
-      <input type="text" class="f-submitter" placeholder="your name" maxlength="80">`;
+  function renderMisc() {
+    document.title = "numberwang";
+    setWordmark("The Game Where We Collect Numbers");
+    const entries = miscEntries();
+    const mine = loadMyUploads();
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const navRow = document.createElement("div");
+    navRow.className = "detail-nav-row";
+    navRow.innerHTML = `
+      <span></span>
+      <div class="detail-center">
+        <div class="detail-eyebrow">misc</div>
+        <div class="detail-number">&infin;</div>
+        <div class="detail-meta">${entries.length} picture${entries.length === 1 ? "" : "s"} on file</div>
+      </div>
+      <span></span>`;
+    section.appendChild(navRow);
+
+    if (entries.length) {
+      const gallery = document.createElement("div");
+      gallery.id = "misc-gallery";
+      entries.forEach((p, i) => gallery.appendChild(buildGalleryItem(p, i, entries.length, null, mine)));
+      section.appendChild(gallery);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "no-photos";
+      empty.textContent = "Nothing here yet — numbers that don't fit 1–100 land here.";
+      section.appendChild(empty);
+    }
+
+    const hint = document.createElement("p");
+    hint.className = "gallery-meta";
+    hint.style.textAlign = "center";
+    hint.style.marginTop = "24px";
+    hint.textContent = "Use “add a number” above to add something here.";
+    section.appendChild(hint);
+
+    app.replaceChildren(section);
+    renderProgress();
+  }
+
+  // ---- shared form fields (used by both the inline upload panel and the modal) ----
+  function buildTextField(labelText, inputClass, mandatory) {
+    const wrap = document.createElement("label");
+    wrap.className = "field-label";
+    const span = document.createElement("span");
+    span.textContent = mandatory ? `${labelText} *` : labelText;
+    wrap.appendChild(span);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = inputClass;
+    input.maxLength = 80;
+    if (mandatory) input.required = true;
+    wrap.appendChild(input);
     return wrap;
   }
 
-  function buildUploadBox(n) {
-    const box = document.createElement("div");
-    box.className = "upload-box";
-    box.innerHTML = `
-      <p class="kicker">Submit a plate</p>
-      <h3>Add a picture of ${n}</h3>
-      <p class="tiny">JPEG, PNG or WebP &middot; published immediately</p>`;
-
-    box.appendChild(buildMetaFields());
-
-    const alsoField = document.createElement("div");
-    alsoField.className = "also-numbers-field";
-    alsoField.innerHTML = `
-      <input type="text" class="f-also-numbers" placeholder="also shows (comma-separated, optional)" maxlength="80">`;
-    box.appendChild(alsoField);
-
-    const btnRow = document.createElement("div");
-    btnRow.innerHTML = `
-      <label class="upload-btn">Choose picture(s)
-        <input type="file" accept="image/*" multiple>
-      </label>
-      <div class="upload-status" role="status"></div>`;
-    box.appendChild(btnRow);
-
-    const input = box.querySelector("input[type=file]");
-    const status = box.querySelector(".upload-status");
-
-    const meta = () => ({
-      submitter: box.querySelector(".f-submitter").value,
-      caption: box.querySelector(".f-caption").value,
-    });
-
-    // this box always tags the page's own number, plus whatever extra
-    // numbers the contributor lists (e.g. the same picture also shows 42).
-    const numbers = () => {
-      const extra = parseNumberList(box.querySelector(".f-also-numbers").value);
-      return parseNumberList([n, ...extra].join(","));
-    };
-
-    input.addEventListener("change", () => submitPhotos(input.files, numbers(), meta(), status));
-
-    box.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      box.classList.add("dragover");
-    });
-    box.addEventListener("dragleave", () => box.classList.remove("dragover"));
-    box.addEventListener("drop", (e) => {
-      e.preventDefault();
-      box.classList.remove("dragover");
-      submitPhotos(e.dataTransfer.files, numbers(), meta(), status);
-    });
-    return box;
+  function buildTextareaField(labelText, inputClass) {
+    const wrap = document.createElement("label");
+    wrap.className = "field-label";
+    const span = document.createElement("span");
+    span.textContent = labelText;
+    wrap.appendChild(span);
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.className = inputClass;
+    textarea.maxLength = 500;
+    wrap.appendChild(textarea);
+    return wrap;
   }
 
-  // Core upload routine, shared by the inline box and the global modal.
+  function buildCheckboxRow(labelText, inputClass) {
+    const wrap = document.createElement("label");
+    wrap.className = "checkbox-label";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = inputClass;
+    checkbox.checked = true;
+    wrap.appendChild(checkbox);
+    wrap.appendChild(document.createTextNode(` ${labelText}`));
+    return { wrap, checkbox };
+  }
+
+  function buildLocationField() {
+    const block = document.createElement("div");
+    block.className = "meta-field-block";
+
+    const listId = `location-list-${Math.random().toString(36).slice(2)}`;
+    const field = buildTextField("where did you find that", "f-location");
+    const input = field.querySelector("input");
+    input.setAttribute("list", listId);
+    input.maxLength = 250; // Nominatim's full display_name can be long
+    block.appendChild(field);
+
+    const datalist = document.createElement("datalist");
+    datalist.id = listId;
+    block.appendChild(datalist);
+
+    const { wrap, checkbox } = buildCheckboxRow("use photo's location", "f-location-metadata");
+    block.appendChild(wrap);
+
+    input.disabled = true;
+    checkbox.addEventListener("change", () => {
+      input.disabled = checkbox.checked;
+      if (!checkbox.checked) input.focus();
+    });
+    wireLocationAutocomplete(input, datalist);
+
+    return block;
+  }
+
+  function buildWhenField() {
+    const block = document.createElement("div");
+    block.className = "meta-field-block";
+
+    const label = document.createElement("label");
+    label.className = "field-label";
+    const span = document.createElement("span");
+    span.textContent = "when did you find that";
+    label.appendChild(span);
+    const input = document.createElement("input");
+    input.type = "date";
+    input.className = "f-found-at";
+    label.appendChild(input);
+    block.appendChild(label);
+
+    const { wrap, checkbox } = buildCheckboxRow("use photo's date", "f-found-at-metadata");
+    block.appendChild(wrap);
+
+    input.disabled = true;
+    checkbox.addEventListener("change", () => {
+      input.disabled = checkbox.checked;
+    });
+
+    return block;
+  }
+
+  function buildAlsoShowsField() {
+    const block = document.createElement("div");
+    block.className = "meta-field-block";
+    block.appendChild(buildTextField("also shows numbers (optional)", "f-also-numbers"));
+    const hint = document.createElement("p");
+    hint.className = "upload-helper";
+    hint.textContent = "shows more than one number? separate with commas";
+    block.appendChild(hint);
+    return block;
+  }
+
+  function appendSharedFields(container) {
+    container.appendChild(buildTextField("your name", "f-submitter", true));
+    container.appendChild(buildFieldPairRow());
+    container.appendChild(buildLocationField());
+    container.appendChild(buildWhenField());
+    container.appendChild(buildTextareaField("comments", "f-comments"));
+  }
+
+  function buildFieldPairRow() {
+    const row = document.createElement("div");
+    row.className = "field-pair-row";
+    row.appendChild(buildTextField("your number", "f-their-number"));
+    row.appendChild(buildTextField("favorite number", "f-favorite-number"));
+    return row;
+  }
+
+  function readSharedFields(container) {
+    return {
+      location: container.querySelector(".f-location").value,
+      foundAt: container.querySelector(".f-found-at").value,
+      submitter: container.querySelector(".f-submitter").value,
+      theirNumber: container.querySelector(".f-their-number").value,
+      favoriteNumber: container.querySelector(".f-favorite-number").value,
+      comments: container.querySelector(".f-comments").value,
+      consent: container.querySelector(".f-consent").checked,
+    };
+  }
+
+  // Required consent checkbox — placed right above each form's submit
+  // button, not with the other shared fields. Starts unchecked (unlike
+  // the metadata convenience checkboxes): this is a legal affirmation,
+  // not a default-on nicety, so it needs an explicit, active check.
+  function buildConsentField() {
+    const wrap = document.createElement("label");
+    wrap.className = "checkbox-label consent-label";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "f-consent";
+    checkbox.required = true;
+    wrap.appendChild(checkbox);
+
+    const text = document.createElement("span");
+    text.appendChild(document.createTextNode("I agree this photo can be used by anyone, in any way — see "));
+    const link = document.createElement("a");
+    link.href = "#/terms";
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "terms";
+    text.appendChild(link);
+    text.appendChild(document.createTextNode("."));
+    wrap.appendChild(text);
+
+    return wrap;
+  }
+
+  // Dropzone: drag & drop, paste, or click-to-browse.
+  function buildDropzone({ multiple, mandatory, onFiles }) {
+    const zone = document.createElement("label");
+    zone.className = "dropzone";
+    zone.tabIndex = 0;
+    zone.innerHTML = `drag &amp; drop, paste, or <span class="pick-text">choose ${multiple ? "files" : "a photo"}</span>${mandatory ? " *" : ""}`;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/jpeg,image/png,image/webp";
+    if (multiple) input.multiple = true;
+    zone.appendChild(input);
+
+    input.addEventListener("change", () => {
+      if (input.files.length) onFiles(input.files);
+    });
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("dragover");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files);
+    });
+    zone.addEventListener("paste", (e) => {
+      const items = (e.clipboardData || window.clipboardData).items;
+      const files = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          const file = items[i].getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length) {
+        e.preventDefault();
+        onFiles(files);
+      }
+    });
+
+    return { zone, input };
+  }
+
+  function buildUploadPanel(n) {
+    const panel = document.createElement("div");
+    panel.className = "upload-panel";
+
+    const kicker = document.createElement("p");
+    kicker.className = "kicker";
+    kicker.textContent = "Submit a number";
+    panel.appendChild(kicker);
+
+    const heading = document.createElement("h3");
+    heading.textContent = `Add a ${n}`;
+    panel.appendChild(heading);
+
+    let stagedFiles = [];
+
+    const fileStatus = document.createElement("p");
+    fileStatus.className = "upload-helper";
+
+    const { zone, input: fileInput } = buildDropzone({
+      multiple: true,
+      mandatory: true,
+      onFiles: async (files) => {
+        stagedFiles = [...files];
+        fileStatus.textContent = `${stagedFiles.length} picture${stagedFiles.length === 1 ? "" : "s"} selected`;
+        syncSubmitEnabled();
+        await applyExifMetadata(panel, stagedFiles[0]);
+      },
+    });
+    panel.appendChild(zone);
+
+    const helper = document.createElement("p");
+    helper.className = "upload-helper";
+    helper.textContent = "JPEG, PNG or WebP · published immediately";
+    panel.appendChild(helper);
+    panel.appendChild(fileStatus);
+
+    panel.appendChild(buildAlsoShowsField());
+    appendSharedFields(panel);
+
+    const consentField = buildConsentField();
+    panel.appendChild(consentField);
+    const consentCheckbox = consentField.querySelector(".f-consent");
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "modal-submit";
+    submitBtn.textContent = "submit";
+    submitBtn.disabled = true;
+    panel.appendChild(submitBtn);
+
+    const status = document.createElement("div");
+    status.className = "upload-status";
+    status.setAttribute("role", "status");
+    panel.appendChild(status);
+
+    const nameInput = panel.querySelector(".f-submitter");
+
+    function syncSubmitEnabled() {
+      submitBtn.disabled = !(stagedFiles.length && nameInput.value.trim() && consentCheckbox.checked);
+    }
+    nameInput.addEventListener("input", syncSubmitEnabled);
+    consentCheckbox.addEventListener("change", syncSubmitEnabled);
+
+    submitBtn.addEventListener("click", () => {
+      if (!stagedFiles.length || !nameInput.value.trim() || !consentCheckbox.checked) return;
+      const also = parseNumberList(panel.querySelector(".f-also-numbers").value);
+      const numbers = parseNumberList([n, ...also].join(","));
+      const dt = new DataTransfer();
+      stagedFiles.forEach((f) => dt.items.add(f));
+      submitPhotos(dt.files, numbers, readSharedFields(panel), status).then((ok) => {
+        if (ok) {
+          stagedFiles = [];
+          fileInput.value = "";
+          fileStatus.textContent = "";
+          submitBtn.disabled = true;
+        }
+      });
+    });
+
+    return panel;
+  }
+
+  // Core upload routine, shared by the upload panel and the modal.
   // `numbers` is the list of numbers this batch of pictures should be
-  // tagged with (at least one). On success, reloads data and re-renders.
+  // tagged with (at least one). Returns true if at least one upload
+  // succeeded. On success, reloads data and re-renders.
   async function submitPhotos(fileList, numbers, meta, status) {
     const files = [...fileList].filter((f) => f.type.startsWith("image/"));
     if (!files.length) {
       setStatus(status, "err", "That doesn't look like an image.");
-      return;
+      return false;
     }
     if (!numbers || !numbers.length) {
       setStatus(status, "err", "Enter at least one number first.");
-      return;
+      return false;
+    }
+    if (!meta.submitter) {
+      setStatus(status, "err", "Your name is required.");
+      return false;
+    }
+    if (!meta.consent) {
+      setStatus(status, "err", "You need to agree to the terms before submitting.");
+      return false;
     }
 
     const recentSigs = loadRecentSignatures();
@@ -486,8 +929,13 @@
         const form = new FormData();
         form.append("numbers", numbers.join(","));
         form.append("photo", blob, "photo.jpg");
-        if (meta.submitter) form.append("submitter", meta.submitter);
-        if (meta.caption) form.append("caption", meta.caption);
+        form.append("submitter", meta.submitter);
+        form.append("consent", "true");
+        if (meta.location) form.append("location", meta.location);
+        if (meta.foundAt) form.append("foundAt", meta.foundAt);
+        if (meta.theirNumber) form.append("theirNumber", meta.theirNumber);
+        if (meta.favoriteNumber) form.append("favoriteNumber", meta.favoriteNumber);
+        if (meta.comments) form.append("comments", meta.comments);
         const res = await fetch(`${API}/api/upload`, { method: "POST", body: form });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || `upload failed (${res.status})`);
@@ -497,21 +945,21 @@
         done++;
       } catch (err) {
         setStatus(status, "err", `Upload failed: ${err.message}`);
-        return;
+        return done > 0;
       }
     }
 
     if (!done) {
       setStatus(status, "", "Nothing uploaded.");
-      return;
+      return false;
     }
 
     await loadPhotos();
     const currentN = currentNumber();
-    const onOthers = location.hash === "#/others";
+    const onMisc = location.hash === "#/misc";
     const alreadyThere =
       (currentN !== null && numbers.includes(currentN)) ||
-      (onOthers && numbers.some((x) => !(x >= 1 && x <= 100)));
+      (onMisc && numbers.some((x) => !(x >= 1 && x <= 100)));
 
     if (alreadyThere) {
       render();
@@ -522,8 +970,9 @@
       }
     } else {
       const inRangeNumbers = numbers.filter((x) => x >= 1 && x <= 100);
-      location.hash = inRangeNumbers.length ? `#/${inRangeNumbers[0]}` : "#/others";
+      location.hash = inRangeNumbers.length ? `#/${inRangeNumbers[0]}` : "#/misc";
     }
+    return true;
   }
 
   // Downscale to max 1600px on the long edge and re-encode as JPEG,
@@ -556,7 +1005,7 @@
     el.textContent = text;
   }
 
-  // ---- global "add any number" modal ----
+  // ---- global "add a number" modal ----
   let modalEls = null;
 
   function buildModal() {
@@ -570,58 +1019,108 @@
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-labelledby", "modal-title");
 
-    dialog.innerHTML = `
-      <a href="#" class="modal-close tiny">[x] close</a>
-      <p class="kicker" id="modal-title">add a number</p>
-      <label class="modal-label tiny" for="modal-number">your number</label>
-      <input type="text" id="modal-number" required placeholder="e.g. 7 or 7, 42">
-      <p class="tiny modal-number-hint">shows more than one number? separate with commas</p>`;
+    const header = document.createElement("div");
+    header.className = "modal-header";
+    const title = document.createElement("span");
+    title.className = "modal-title";
+    title.id = "modal-title";
+    title.textContent = "Add a number";
+    header.appendChild(title);
+    const closeLink = document.createElement("a");
+    closeLink.href = "#";
+    closeLink.className = "modal-close";
+    closeLink.textContent = "[x]";
+    header.appendChild(closeLink);
+    dialog.appendChild(header);
 
-    const fields = buildMetaFields();
-    dialog.appendChild(fields);
+    const numberField = document.createElement("label");
+    numberField.className = "field-label";
+    const numberLabel = document.createElement("span");
+    numberLabel.textContent = "number *";
+    numberField.appendChild(numberLabel);
+    const numberInput = document.createElement("input");
+    numberInput.type = "text";
+    numberInput.id = "modal-number";
+    numberField.appendChild(numberInput);
+    dialog.appendChild(numberField);
 
-    const btnRow = document.createElement("div");
-    btnRow.innerHTML = `
-      <label class="upload-btn">Choose picture(s)
-        <input type="file" accept="image/*" multiple disabled>
-      </label>
-      <div class="upload-status" role="status"></div>`;
-    dialog.appendChild(btnRow);
+    const numberHint = document.createElement("p");
+    numberHint.className = "number-hint";
+    numberHint.textContent = "shows more than one number? separate with commas";
+    dialog.appendChild(numberHint);
+
+    let stagedFile = null;
+    const { zone, input: fileInput } = buildDropzone({
+      multiple: false,
+      mandatory: true,
+      onFiles: async (files) => {
+        stagedFile = files[0];
+        syncSubmitEnabled();
+        await applyExifMetadata(dialog, stagedFile);
+      },
+    });
+    dialog.appendChild(zone);
+
+    appendSharedFields(dialog);
+
+    const consentField = buildConsentField();
+    dialog.appendChild(consentField);
+    const consentCheckbox = consentField.querySelector(".f-consent");
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "modal-submit";
+    submitBtn.textContent = "submit";
+    dialog.appendChild(submitBtn);
+
+    const status = document.createElement("div");
+    status.className = "upload-status";
+    status.setAttribute("role", "status");
+    dialog.appendChild(status);
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    const numberInput = dialog.querySelector("#modal-number");
-    const fileInput = dialog.querySelector("input[type=file]");
-    const status = dialog.querySelector(".upload-status");
-    const closeLink = dialog.querySelector(".modal-close");
+    const nameInput = dialog.querySelector(".f-submitter");
 
-    function syncFileEnabled() {
-      fileInput.disabled = parseNumberList(numberInput.value).length === 0;
-    }
-    numberInput.addEventListener("input", syncFileEnabled);
-
-    const meta = () => ({
-      submitter: dialog.querySelector(".f-submitter").value,
-      caption: dialog.querySelector(".f-caption").value,
-    });
-
-    fileInput.addEventListener("change", () => {
+    function syncSubmitEnabled() {
       const numbers = parseNumberList(numberInput.value);
-      if (!numbers.length) {
-        setStatus(status, "err", "Enter at least one number first.");
-        return;
-      }
-      submitPhotos(fileInput.files, numbers, meta(), status).then(closeModal);
+      submitBtn.disabled = !(numbers.length && stagedFile && nameInput.value.trim() && consentCheckbox.checked);
+    }
+    numberInput.addEventListener("input", syncSubmitEnabled);
+    nameInput.addEventListener("input", syncSubmitEnabled);
+    consentCheckbox.addEventListener("change", syncSubmitEnabled);
+
+    submitBtn.addEventListener("click", () => {
+      const numbers = parseNumberList(numberInput.value);
+      if (!numbers.length || !stagedFile || !nameInput.value.trim() || !consentCheckbox.checked) return;
+      const dt = new DataTransfer();
+      dt.items.add(stagedFile);
+      submitPhotos(dt.files, numbers, readSharedFields(dialog), status).then((ok) => {
+        if (ok) {
+          stagedFile = null;
+          closeModal();
+        }
+      });
     });
 
     function openModal() {
-      numberInput.value = currentNumber() || "";
-      dialog.querySelector(".f-submitter").value = "";
-      dialog.querySelector(".f-caption").value = "";
+      dialog.querySelectorAll(".field-label input, .field-label textarea").forEach((el) => {
+        el.value = "";
+      });
+      numberInput.value = findFirstEmpty() || "";
+      fileInput.value = "";
+      stagedFile = null;
+      // metadata convenience checkboxes default on; consent must be
+      // actively (re)checked every time, so it's excluded here.
+      dialog.querySelectorAll('input[type="checkbox"]:not(.f-consent)').forEach((cb) => {
+        cb.checked = true;
+        cb.dispatchEvent(new Event("change"));
+      });
+      consentCheckbox.checked = false;
       status.textContent = "";
       status.className = "upload-status";
-      syncFileEnabled();
+      syncSubmitEnabled();
       overlay.hidden = false;
       numberInput.focus();
     }
