@@ -483,12 +483,10 @@
       plus.textContent = "+";
       cell.appendChild(plus);
 
-      if (photos.length > 1) {
-        const count = document.createElement("span");
-        count.className = "cell-mark cell-mark-count";
-        count.textContent = `${label}×${photos.length}`;
-        cell.appendChild(count);
-      }
+      const count = document.createElement("span");
+      count.className = "cell-mark cell-mark-count";
+      count.textContent = photos.length > 1 ? `${label}×${photos.length}` : `${label}`;
+      cell.appendChild(count);
     } else {
       const numberLabel = document.createElement("span");
       numberLabel.className = "cell-empty-label";
@@ -1151,20 +1149,32 @@
 
     async function suggestNumber(file) {
       const wasTouched = numberTouched;
-      if (!wasTouched) numberGuessHint.textContent = "guessing the number from the photo…";
+      if (!wasTouched) {
+        // Make the wait visible in the field itself — an empty input with a
+        // "reading…" placeholder — so the pause reads as work in progress,
+        // not as a frozen form. Typing is still allowed and always wins.
+        numberInput.value = "";
+        numberInput.dispatchEvent(new Event("input"));
+        numberTouched = false; // that clear was ours, not the contributor's
+        numberInput.placeholder = "reading the photo…";
+        numberGuessHint.textContent = "trying to read the number from the photo — or just type it";
+      }
       const guess = await detectNumberInPhoto(file);
       if (stagedFile !== file) return; // a different file was staged meanwhile
-      if (!wasTouched) {
+      numberInput.placeholder = "";
+      if (!numberTouched) {
         // Whatever was there before (including the next-empty-slot default
         // openModal fills in) is just as likely to be wrong as no answer at
-        // all, so a failed guess clears the field instead of leaving a
-        // number sitting there that looks like an answer but isn't one.
+        // all, so a failed guess leaves the field empty instead of showing
+        // a number that looks like an answer but isn't one.
         numberInput.value = guess || "";
         numberInput.dispatchEvent(new Event("input"));
         numberTouched = false; // programmatic fill/clear — still overridable by a later guess
         numberGuessHint.textContent = guess
           ? `guessed "${guess}" from the photo — double check it`
-          : "couldn't guess a number from this photo — enter it yourself";
+          : "couldn't read a number from this photo — enter it yourself";
+      } else if (!wasTouched) {
+        numberGuessHint.textContent = "";
       }
     }
 
