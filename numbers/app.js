@@ -303,6 +303,23 @@
     });
   }
 
+  // Best-effort number guess from the photo itself, via the worker's vision
+  // model — a pre-fill suggestion only, never trusted outright (the model
+  // does misread digits sometimes). Returns the guessed number as a string,
+  // or null if nothing was found or the request failed.
+  async function detectNumberInPhoto(file) {
+    try {
+      const form = new FormData();
+      form.append("photo", file);
+      const res = await fetch(`${API}/api/detect-number`, { method: "POST", body: form });
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body.number || null;
+    } catch {
+      return null;
+    }
+  }
+
   // Applies EXIF-derived location/date to a form's fields, if their
   // "use metadata" checkboxes are checked. Called once a file is staged.
   // Many phones don't embed GPS/date at all (location tagging off, HEIC
@@ -453,6 +470,8 @@
     cell.setAttribute("aria-label", `${label}, ${photos.length} pictures`);
 
     if (filled) {
+      cell.title = label;
+
       const img = document.createElement("img");
       img.loading = "lazy";
       img.alt = `Picture of ${label}`;
@@ -467,7 +486,7 @@
       if (photos.length > 1) {
         const count = document.createElement("span");
         count.className = "cell-mark cell-mark-count";
-        count.textContent = `×${photos.length}`;
+        count.textContent = `${label}×${photos.length}`;
         cell.appendChild(count);
       }
     } else {
@@ -1106,17 +1125,48 @@
     numberHint.textContent = "shows more than one number? separate with commas";
     dialog.appendChild(numberHint);
 
+    const numberGuessHint = document.createElement("p");
+    numberGuessHint.className = "number-hint";
+    dialog.appendChild(numberGuessHint);
+
+    // Only overwrite the number field with a photo guess if the contributor
+    // hasn't already typed their own value — a guess should never clobber
+    // something the person deliberately entered.
+    let numberTouched = false;
+    numberInput.addEventListener("input", () => { numberTouched = true; });
+
     let stagedFile = null;
     const { zone, input: fileInput } = buildDropzone({
       multiple: false,
       mandatory: true,
       onFiles: async (files) => {
         stagedFile = files[0];
+        numberGuessHint.textContent = "";
         syncSubmitEnabled();
         await applyExifMetadata(dialog, stagedFile);
+        await suggestNumber(stagedFile);
       },
     });
     dialog.appendChild(zone);
+
+    async function suggestNumber(file) {
+      const wasTouched = numberTouched;
+      if (!wasTouched) numberGuessHint.textContent = "guessing the number from the photo…";
+      const guess = await detectNumberInPhoto(file);
+      if (stagedFile !== file) return; // a different file was staged meanwhile
+      if (!wasTouched) {
+        // Whatever was there before (including the next-empty-slot default
+        // openModal fills in) is just as likely to be wrong as no answer at
+        // all, so a failed guess clears the field instead of leaving a
+        // number sitting there that looks like an answer but isn't one.
+        numberInput.value = guess || "";
+        numberInput.dispatchEvent(new Event("input"));
+        numberTouched = false; // programmatic fill/clear — still overridable by a later guess
+        numberGuessHint.textContent = guess
+          ? `guessed "${guess}" from the photo — double check it`
+          : "couldn't guess a number from this photo — enter it yourself";
+      }
+    }
 
     appendSharedFields(dialog);
 
@@ -1165,6 +1215,8 @@
       // the number field is the one thing that never carries over between
       // submissions — everything else remembers what was typed last time.
       numberInput.value = findFirstEmpty() || "";
+      numberTouched = false;
+      numberGuessHint.textContent = "";
       fileInput.value = "";
       stagedFile = null;
       applyFormMemory(dialog);
