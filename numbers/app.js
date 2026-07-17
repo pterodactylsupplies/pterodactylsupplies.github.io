@@ -332,6 +332,10 @@
     const locCheckbox = container.querySelector(".f-location-metadata");
     const locInput = container.querySelector(".f-location");
     if (locCheckbox && locCheckbox.checked) {
+      // The checked box promises "this value comes from the photo", so any
+      // previous content — including the location remembered from the last
+      // submission — must not survive into a new photo's slot.
+      locInput.value = "";
       if (exif.lat != null && exif.lon != null) {
         locInput.value = "looking up…";
         locInput.value = (await reverseGeocode(exif.lat, exif.lon)) || "";
