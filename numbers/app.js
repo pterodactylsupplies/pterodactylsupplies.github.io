@@ -428,8 +428,21 @@
     return entries;
   }
 
+  function allEntries() {
+    const seen = new Set();
+    const entries = [];
+    for (const list of Object.values(photosByNumber)) {
+      for (const p of list) {
+        if (seen.has(p.key)) continue; // dedupe multi-tagged photos
+        seen.add(p.key);
+        entries.push(p);
+      }
+    }
+    return entries;
+  }
+
   function setView(view) {
-    document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms");
+    document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all");
     document.body.classList.add(`view-${view}`);
   }
 
@@ -442,6 +455,9 @@
     if (location.hash === "#/terms") {
       setView("terms");
       renderTerms();
+    } else if (location.hash === "#/all") {
+      setView("all");
+      renderAll();
     } else if (location.hash === "#/misc") {
       setView("misc");
       renderMisc();
@@ -555,7 +571,7 @@
     renderProgress();
   }
 
-  function buildGalleryItem(p, i, total, currentN, mine) {
+  function buildGalleryItem(p, i, total, currentN, mine, opts = {}) {
     const item = document.createElement("div");
     item.className = "gallery-item";
 
@@ -572,14 +588,20 @@
 
     const caption = document.createElement("div");
     caption.className = "gallery-caption";
-    caption.textContent = `number ${i + 1} of ${total}`;
+    if (opts.caption) {
+      caption.appendChild(opts.caption);
+    } else {
+      caption.textContent = `number ${i + 1} of ${total}`;
+    }
     item.appendChild(caption);
 
     const meta = document.createElement("div");
     meta.className = "gallery-meta";
     const name = p.submitter || "anonymous";
     const bits = [p.theirNumber ? `${name} (${p.theirNumber})` : name];
-    if (currentN != null) {
+    if (opts.caption) {
+      // the caption already names the photo's numbers — no "marked" bit
+    } else if (currentN != null) {
       const alsoOn = (p.numbers || []).filter((x) => x !== currentN);
       if (alsoOn.length) bits.push(`also on ${alsoOn.join(", ")}`);
     } else {
@@ -705,6 +727,161 @@
     hint.style.marginTop = "24px";
     hint.textContent = "Use “add a number” above to add something here.";
     section.appendChild(hint);
+
+    app.replaceChildren(section);
+    renderProgress();
+  }
+
+  // ---- "all pictures" page: every photo in one masonry wall, sortable ----
+  const ALL_PREFS_KEY = "numbersGallery.allPrefs";
+
+  function loadAllPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(ALL_PREFS_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function renderAll() {
+    document.title = "numberwang — all pictures";
+    setWordmark("The Game Where We Collect Numbers");
+    const mine = loadMyUploads();
+    const prefs = Object.assign({ sort: "added", dir: "desc", width: 220 }, loadAllPrefs());
+    const savePrefs = () => localStorage.setItem(ALL_PREFS_KEY, JSON.stringify(prefs));
+
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const entries = allEntries();
+
+    const controls = document.createElement("div");
+    controls.className = "all-controls";
+
+    const countEl = document.createElement("span");
+    countEl.textContent = `${entries.length} picture${entries.length === 1 ? "" : "s"}`;
+    controls.appendChild(countEl);
+
+    const sortLabel = document.createElement("label");
+    sortLabel.appendChild(document.createTextNode("sort by"));
+    const sortSel = document.createElement("select");
+    for (const [value, text] of [["added", "date added"], ["found", "date found"], ["number", "number"]]) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      sortSel.appendChild(opt);
+    }
+    sortSel.value = prefs.sort;
+    sortLabel.appendChild(sortSel);
+    controls.appendChild(sortLabel);
+
+    const dirSel = document.createElement("select");
+    const dirLabel = document.createElement("label");
+    dirLabel.appendChild(dirSel);
+    controls.appendChild(dirLabel);
+    // direction wording follows the field: dates read better as old/new,
+    // numbers as small/large
+    function refreshDirOptions() {
+      const byDate = sortSel.value !== "number";
+      dirSel.replaceChildren();
+      for (const [value, text] of [
+        ["asc", byDate ? "oldest first" : "smallest first"],
+        ["desc", byDate ? "newest first" : "largest first"],
+      ]) {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = text;
+        dirSel.appendChild(opt);
+      }
+      dirSel.value = prefs.dir;
+    }
+    refreshDirOptions();
+
+    const sizeLabel = document.createElement("label");
+    sizeLabel.appendChild(document.createTextNode("picture size"));
+    const sizeRange = document.createElement("input");
+    sizeRange.type = "range";
+    sizeRange.min = "120";
+    sizeRange.max = "480";
+    sizeRange.step = "20";
+    sizeRange.value = String(prefs.width);
+    sizeLabel.appendChild(sizeRange);
+    controls.appendChild(sizeLabel);
+
+    section.appendChild(controls);
+
+    const gallery = document.createElement("div");
+    gallery.id = "all-gallery";
+    gallery.style.columnWidth = `${prefs.width}px`;
+    section.appendChild(gallery);
+
+    // Missing "date found" always sorts last, in either direction — an
+    // unknown date isn't older or newer than a known one, just unknown.
+    const sortKeys = {
+      added: (p) => new Date(p.uploaded).getTime(),
+      found: (p) => (p.foundAt ? new Date(p.foundAt).getTime() : null),
+      number: (p) => Math.min(...p.numbers),
+    };
+
+    function numbersCaption(p) {
+      const span = document.createElement("span");
+      p.numbers.forEach((n, idx) => {
+        if (idx) span.appendChild(document.createTextNode(", "));
+        const a = document.createElement("a");
+        a.href = n >= 1 && n <= 100 ? `#/${n}` : "#/misc";
+        a.textContent = n;
+        span.appendChild(a);
+      });
+      return span;
+    }
+
+    function rebuild() {
+      const keyFn = sortKeys[prefs.sort];
+      const sorted = [...entries].sort((a, b) => {
+        const ka = keyFn(a);
+        const kb = keyFn(b);
+        if (ka == null && kb == null) return 0;
+        if (ka == null) return 1;
+        if (kb == null) return -1;
+        return prefs.dir === "asc" ? ka - kb : kb - ka;
+      });
+      gallery.replaceChildren();
+      sorted.forEach((p, i) =>
+        gallery.appendChild(buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) }))
+      );
+    }
+
+    sortSel.addEventListener("change", () => {
+      prefs.sort = sortSel.value;
+      refreshDirOptions();
+      savePrefs();
+      rebuild();
+    });
+    dirSel.addEventListener("change", () => {
+      prefs.dir = dirSel.value;
+      savePrefs();
+      rebuild();
+    });
+    sizeRange.addEventListener("input", () => {
+      prefs.width = Number(sizeRange.value);
+      gallery.style.columnWidth = `${prefs.width}px`;
+      savePrefs();
+    });
+
+    if (entries.length) {
+      rebuild();
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "no-photos";
+      empty.textContent = "No pictures yet.";
+      section.appendChild(empty);
+    }
 
     app.replaceChildren(section);
     renderProgress();

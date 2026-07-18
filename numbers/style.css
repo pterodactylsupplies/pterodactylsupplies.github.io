@@ -21,7 +21,7 @@
 /* the grid page ships full-bleed (no max-width anywhere); every other view
    (detail, misc) is capped at --content-max, and detail's numbers render in
    monospace by default while the grid's render in serif. */
-body.view-detail, body.view-misc { --number-font: var(--mono); }
+body.view-detail, body.view-misc, body.view-all { --number-font: var(--mono); }
 
 * { box-sizing: border-box; }
 
@@ -81,6 +81,14 @@ body.view-grid .mast { max-width: none; }
   flex-wrap: wrap;
   gap: 12px;
 }
+
+.mast-row2-left {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.all-link { font-size: 13px; }
 
 .progress { font-size: 16px; }
 .progress strong { font-weight: bold; }
@@ -241,6 +249,45 @@ body.view-grid main { max-width: none; }
 
 @media (max-width: 640px) {
   #detail-gallery, #misc-gallery { column-count: 2; }
+}
+
+/* ---------- "all pictures" page ---------- */
+
+.all-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  margin-top: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.all-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.all-controls select {
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 4px 6px;
+}
+
+.all-controls input[type="range"] {
+  accent-color: var(--ink);
+}
+
+#all-gallery {
+  column-width: 220px;
+  column-gap: 24px;
+  margin-top: 24px;
 }
 
 .gallery-item {
