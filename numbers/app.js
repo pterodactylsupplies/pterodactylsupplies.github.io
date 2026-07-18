@@ -818,7 +818,6 @@
 
     const gallery = document.createElement("div");
     gallery.id = "all-gallery";
-    gallery.style.columnWidth = `${prefs.width}px`;
     section.appendChild(gallery);
 
     // Missing "date found" always sorts last, in either direction — an
@@ -841,6 +840,27 @@
       return span;
     }
 
+    let items = [];
+    let currentCols = 0;
+
+    function colCount() {
+      return Math.max(1, Math.floor((gallery.clientWidth || 0) / prefs.width) || 1);
+    }
+
+    // Deal items into N column stacks round-robin (item i → column i % N),
+    // so the wall reads left-to-right, row by row.
+    function layout() {
+      currentCols = colCount();
+      const cols = [];
+      for (let c = 0; c < currentCols; c++) {
+        const col = document.createElement("div");
+        col.className = "all-col";
+        cols.push(col);
+      }
+      items.forEach((el, i) => cols[i % currentCols].appendChild(el));
+      gallery.replaceChildren(...cols);
+    }
+
     function rebuild() {
       const keyFn = sortKeys[prefs.sort];
       const sorted = [...entries].sort((a, b) => {
@@ -851,10 +871,10 @@
         if (kb == null) return -1;
         return prefs.dir === "asc" ? ka - kb : kb - ka;
       });
-      gallery.replaceChildren();
-      sorted.forEach((p, i) =>
-        gallery.appendChild(buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) }))
+      items = sorted.map((p, i) =>
+        buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
       );
+      layout();
     }
 
     sortSel.addEventListener("change", () => {
@@ -870,20 +890,30 @@
     });
     sizeRange.addEventListener("input", () => {
       prefs.width = Number(sizeRange.value);
-      gallery.style.columnWidth = `${prefs.width}px`;
       savePrefs();
+      if (colCount() !== currentCols) layout();
     });
 
-    if (entries.length) {
-      rebuild();
-    } else {
+    const onResize = () => {
+      if (!document.contains(gallery)) {
+        window.removeEventListener("resize", onResize);
+        return;
+      }
+      if (colCount() !== currentCols) layout();
+    };
+    window.addEventListener("resize", onResize);
+
+    if (!entries.length) {
       const empty = document.createElement("div");
       empty.className = "no-photos";
       empty.textContent = "No pictures yet.";
       section.appendChild(empty);
     }
 
+    // layout() measures the gallery's width, so it can only run once the
+    // section is actually in the document.
     app.replaceChildren(section);
+    if (entries.length) rebuild();
     renderProgress();
   }
 
