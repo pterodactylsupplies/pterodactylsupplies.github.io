@@ -329,31 +329,50 @@
   async function applyExifMetadata(container, file) {
     const exif = await readExif(file);
 
+    // A box that unchecked itself for an earlier photo ("no data in that
+    // one") re-arms for this new photo — otherwise one GPS-less photo would
+    // permanently kill metadata detection for the rest of the form. Only a
+    // person's own uncheck (a real click) is treated as permanent.
+    const rearm = (checkbox) => {
+      if (checkbox && !checkbox.checked && checkbox.dataset.autoUnchecked) {
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event("change"));
+      }
+    };
+    const autoUncheck = (checkbox) => {
+      checkbox.checked = false;
+      checkbox.dataset.autoUnchecked = "1";
+      checkbox.dispatchEvent(new Event("change"));
+    };
+
     const locCheckbox = container.querySelector(".f-location-metadata");
     const locInput = container.querySelector(".f-location");
+    rearm(locCheckbox);
     if (locCheckbox && locCheckbox.checked) {
+      delete locCheckbox.dataset.autoUnchecked;
       // The checked box promises "this value comes from the photo", so any
       // previous content — including the location remembered from the last
       // submission — must not survive into a new photo's slot.
       locInput.value = "";
+      locInput.placeholder = "";
       if (exif.lat != null && exif.lon != null) {
         locInput.value = "looking up…";
         locInput.value = (await reverseGeocode(exif.lat, exif.lon)) || "";
       }
       if (!locInput.value) {
-        locCheckbox.checked = false;
-        locCheckbox.dispatchEvent(new Event("change"));
+        autoUncheck(locCheckbox);
         locInput.placeholder = "no location found in this photo — type it in";
       }
     }
 
     const whenCheckbox = container.querySelector(".f-found-at-metadata");
     const whenInput = container.querySelector(".f-found-at");
+    rearm(whenCheckbox);
     if (whenCheckbox && whenCheckbox.checked) {
+      delete whenCheckbox.dataset.autoUnchecked;
       whenInput.value = exifDateToInputValue(exif.takenAt);
       if (!whenInput.value) {
-        whenCheckbox.checked = false;
-        whenCheckbox.dispatchEvent(new Event("change"));
+        autoUncheck(whenCheckbox);
       }
     }
   }
@@ -715,6 +734,11 @@
     checkbox.type = "checkbox";
     checkbox.className = inputClass;
     checkbox.checked = true;
+    // A click is the person deciding — that choice is permanent, unlike an
+    // auto-uncheck (photo had no data), which re-arms on the next photo.
+    checkbox.addEventListener("click", () => {
+      delete checkbox.dataset.autoUnchecked;
+    });
     wrap.appendChild(checkbox);
     wrap.appendChild(document.createTextNode(` ${labelText}`));
     return { wrap, checkbox };
@@ -741,6 +765,10 @@
     input.disabled = true;
     checkbox.addEventListener("change", () => {
       input.disabled = checkbox.checked;
+    });
+    // Focus only on a real click-uncheck — an automatic uncheck (photo had
+    // no GPS) must not steal focus / pop the keyboard on mobile.
+    checkbox.addEventListener("click", () => {
       if (!checkbox.checked) input.focus();
     });
     wireLocationAutocomplete(input, datalist);
