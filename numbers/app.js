@@ -251,11 +251,24 @@
   }
 
   // Reverse/forward geocoding via OpenStreetMap's Nominatim (free, no key).
-  // Both are trimmed to just town + country — never a full address.
-  function townCountry(addr) {
-    const town = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
-    const country = addr.country || "";
-    return [town, country].filter(Boolean).join(", ");
+  // Labels go town → county/area → state/region → country, so places in
+  // countries with meaningful subdivisions (US states, UK counties, …) keep
+  // that context. Never street addresses, never postcodes — postcodes can be
+  // near-address precision in some countries (UK), which we deliberately
+  // don't collect.
+  function placeLabel(addr) {
+    const parts = [
+      addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || "",
+      addr.county || addr.state_district || "",
+      addr.state || addr.province || addr.region || "",
+      addr.country || "",
+    ];
+    // Dedupe repeats like "Berlin, Berlin, Germany" (city-states etc.).
+    const out = [];
+    for (const p of parts) {
+      if (p && !out.includes(p)) out.push(p);
+    }
+    return out.join(", ");
   }
 
   async function reverseGeocode(lat, lon) {
@@ -266,7 +279,7 @@
       );
       if (!res.ok) return "";
       const data = await res.json();
-      return townCountry(data.address || {});
+      return placeLabel(data.address || {});
     } catch {
       return "";
     }
@@ -289,7 +302,7 @@
           datalist.replaceChildren();
           const seen = new Set();
           for (const place of data) {
-            const label = townCountry(place.address || {});
+            const label = placeLabel(place.address || {});
             if (!label || seen.has(label)) continue;
             seen.add(label);
             const opt = document.createElement("option");
