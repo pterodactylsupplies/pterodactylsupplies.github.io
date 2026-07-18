@@ -284,10 +284,19 @@ body.view-grid main { max-width: none; }
   accent-color: var(--ink);
 }
 
+/* JS-dealt masonry: N column stacks, items distributed round-robin so the
+   wall reads left-to-right row by row (CSS columns would read top-to-bottom
+   down each column instead). */
 #all-gallery {
-  column-width: 220px;
-  column-gap: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
   margin-top: 24px;
+}
+
+.all-col {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .gallery-item {
@@ -295,7 +304,8 @@ body.view-grid main { max-width: none; }
   margin-bottom: 24px;
 }
 
-.gallery-item a {
+/* the image wrapper link only — caption number links must stay inline */
+.gallery-item > a {
   display: block;
 }
 
