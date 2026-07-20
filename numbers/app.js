@@ -506,12 +506,56 @@
     app.replaceChildren(section);
   }
 
+  // ---- "new since your last visit" ----
+  // Per-browser only (no accounts): the baseline is the timestamp of the
+  // previous visit, kept in localStorage. It's pinned in sessionStorage for
+  // the duration of this visit so reloading and moving between pages keeps
+  // showing the same count, rather than zeroing it the moment you look.
+  const LAST_VISIT_KEY = "numbersGallery.lastVisit";
+  const VISIT_BASELINE_KEY = "numbersGallery.visitBaseline";
+  let visitBaseline; // undefined until resolved once per page load
+
+  function getVisitBaseline() {
+    if (visitBaseline !== undefined) return visitBaseline;
+    try {
+      let pinned = sessionStorage.getItem(VISIT_BASELINE_KEY);
+      if (pinned === null) {
+        // first page of a new visit: this visit's baseline is when the
+        // previous one happened (null on a first-ever visit), and "now"
+        // becomes the baseline for whatever visit comes next.
+        pinned = localStorage.getItem(LAST_VISIT_KEY) || "";
+        sessionStorage.setItem(VISIT_BASELINE_KEY, pinned);
+        localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
+      }
+      visitBaseline = pinned || null;
+    } catch {
+      visitBaseline = null; // storage blocked — just skip the feature
+    }
+    return visitBaseline;
+  }
+
+  function countAddedSince(iso) {
+    if (!iso) return 0;
+    const since = new Date(iso).getTime();
+    if (!Number.isFinite(since)) return 0;
+    return allEntries().filter((p) => new Date(p.uploaded).getTime() > since).length;
+  }
+
   function renderProgress() {
     const collected = Object.entries(photosByNumber).filter(([k, list]) => {
       const n = parseInt(k, 10);
       return n >= 1 && n <= 100 && list.length > 0;
     }).length;
-    progressEl.innerHTML = `<strong>${collected}</strong> of 100 collected`;
+    const total = allEntries().length;
+    const added = countAddedSince(getVisitBaseline());
+
+    let html = `<strong>${collected}</strong> of 100 collected`;
+    html += ` &middot; <strong>${total}</strong> pics`;
+    if (added > 0) {
+      // added since the last visit — the title spells out what "+3" means
+      html += ` <span class="progress-new" title="added since your last visit">(+${added})</span>`;
+    }
+    progressEl.innerHTML = html;
   }
 
   function buildCell(label, photos, href) {

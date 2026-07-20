@@ -92,6 +92,7 @@ body.view-grid .mast { max-width: none; }
 
 .progress { font-size: 16px; }
 .progress strong { font-weight: bold; }
+.progress-new { color: var(--red); }
 
 .mast-cta {
   font-family: var(--serif);
