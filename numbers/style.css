@@ -300,6 +300,9 @@ body.view-grid main { max-width: none; }
   min-width: 0;
 }
 
+/* pictures-only wall: tighter, since there's no text to separate them */
+.gallery-item-plain { margin-bottom: 12px; }
+
 .gallery-item {
   break-inside: avoid;
   margin-bottom: 24px;

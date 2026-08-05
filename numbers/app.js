@@ -360,19 +360,51 @@
   // that context. Never street addresses, never postcodes — postcodes can be
   // near-address precision in some countries (UK), which we deliberately
   // don't collect.
+  // Strips the administrative noise words so two labels can be compared for
+  // "is this just the city's name again?" — "Tel Aviv" vs "Tel Aviv District".
+  function bareName(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N} ]+/gu, " ")
+      .replace(/\b(district|subdistrict|sub|county|province|region|municipality|governorate|oblast|krai|prefecture|department|metropolitan|greater|city|area)\b/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Deliberately an exact match once the noise words are gone, not a
+  // substring test: "Ile-de-France" contains "France" without being it.
+  function saysSameThing(a, b) {
+    const x = bareName(a);
+    const y = bareName(b);
+    return Boolean(x) && x === y;
+  }
+
+  // Town → state/province → country. Counties and districts are deliberately
+  // left out: they're rarely how anyone describes where they were, and they
+  // produce things like "Tel Aviv, Tel Aviv Subdistrict, Tel-Aviv District,
+  // Israel". A state/province is kept only when it adds something the town
+  // name doesn't already say — so US and Canadian places keep theirs, while
+  // city-states and same-named regions don't repeat themselves.
   function placeLabel(addr) {
-    const parts = [
-      addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || "",
-      addr.county || addr.state_district || "",
-      addr.state || addr.province || addr.region || "",
-      addr.country || "",
-    ];
-    // Dedupe repeats like "Berlin, Berlin, Germany" (city-states etc.).
-    const out = [];
-    for (const p of parts) {
-      if (p && !out.includes(p)) out.push(p);
-    }
-    return out.join(", ");
+    const town =
+      addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || "";
+    const region = addr.state || addr.province || addr.region || "";
+    const country = addr.country || "";
+
+    // With no town to anchor on, the next level up is the most useful thing
+    // we have rather than nothing at all.
+    const primary = town || addr.county || addr.state_district || region;
+
+    const parts = [];
+    const add = (value) => {
+      if (!value) return;
+      if (parts.some((existing) => saysSameThing(existing, value))) return;
+      parts.push(value);
+    };
+    add(primary);
+    add(region);
+    add(country);
+    return parts.join(", ");
   }
 
   async function reverseGeocode(lat, lon) {
@@ -578,6 +610,9 @@
     } else if (location.hash === "#/all") {
       setView("all");
       renderAll();
+    } else if (location.hash === "#/all-plain") {
+      setView("all");
+      renderAll(true);
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -1217,6 +1252,41 @@
     renderProgress();
   }
 
+  // A picture with nothing written under it — the details live in the
+  // tooltip instead, so the wall reads as images alone.
+  function buildPlainItem(p) {
+    const bits = [];
+    bits.push(p.numbers.length > 1 ? `numbers ${p.numbers.join(", ")}` : `number ${p.numbers[0]}`);
+    bits.push(p.submitter || "anonymous");
+    if (p.theirNumber) bits.push(`method no. ${p.theirNumber}`);
+    if (p.contact) bits.push(p.contact);
+    if (p.location) bits.push(p.location);
+    if (p.foundAt) bits.push(`found ${formatFoundAt(p.foundAt)}`);
+    bits.push(`published ${relativeTime(p.uploaded)}`);
+    if (p.comments) bits.push(`“${p.comments}”`);
+    const summary = bits.join(" · ");
+
+    const item = document.createElement("div");
+    item.className = "gallery-item gallery-item-plain";
+
+    const link = document.createElement("a");
+    link.href = imgUrl(p.key);
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.title = summary;
+
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    // Short alt: enough for a screen reader to identify the picture, but it
+    // won't splash the contributor's details across the page if the image
+    // fails to load — the full summary stays in the tooltip.
+    img.alt = `Picture of ${p.numbers.join(", ")}`;
+    img.src = imgUrl(p.key);
+    link.appendChild(img);
+    item.appendChild(link);
+    return item;
+  }
+
   // ---- "all pictures" page: every photo in one masonry wall, sortable ----
   const ALL_PREFS_KEY = "numbersGallery.allPrefs";
 
@@ -1228,8 +1298,8 @@
     }
   }
 
-  function renderAll() {
-    document.title = "numberwang — all pictures";
+  function renderAll(plain = false) {
+    document.title = plain ? "numberwang — pictures only" : "numberwang — all pictures";
     setWordmark("The Game Where We Collect Numbers");
     const mine = loadMyUploads();
     const prefs = Object.assign({ sort: "added", dir: "desc", width: 220 }, loadAllPrefs());
@@ -1357,7 +1427,9 @@
         return prefs.dir === "asc" ? ka - kb : kb - ka;
       });
       items = sorted.map((p, i) =>
-        buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
+        plain
+          ? buildPlainItem(p)
+          : buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
       );
       layout();
     }
