@@ -612,7 +612,10 @@
       renderAll();
     } else if (location.hash === "#/all-plain") {
       setView("all");
-      renderAll(true);
+      renderAll("plain");
+    } else if (location.hash === "#/all-numbers") {
+      setView("all");
+      renderAll("numbers");
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -862,6 +865,32 @@
     return null;
   }
 
+  // What to print for a link. A bare host is useless for social profiles —
+  // "instagram.com" doesn't say whose account it is — so the path is kept
+  // and, on the platforms where the first path segment *is* the account
+  // name, shown as a handle.
+  const HANDLE_HOSTS = /^(www\.)?(instagram|twitter|x|facebook|tiktok|threads|t|telegram|vk|github|behance|dribbble|medium|substack|soundcloud|bandcamp|flickr|pinterest)\.(com|me|org|net)$/i;
+  const MAX_LABEL = 42;
+
+  function contactLabel(href, raw) {
+    if (href.startsWith("mailto:")) return href.slice(7);
+    let url;
+    try {
+      url = new URL(href);
+    } catch {
+      return raw;
+    }
+    const host = url.host.replace(/^www\./i, "");
+    const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
+    if (!path) return host;
+
+    const first = path.split("/")[0].replace(/^@/, "");
+    if (HANDLE_HOSTS.test(url.host) && first) return `@${first}`;
+
+    const full = `${host}/${path}`;
+    return full.length > MAX_LABEL ? `${full.slice(0, MAX_LABEL - 1)}…` : full;
+  }
+
   // Decides how a contact should appear beside the name:
   //   { href, label } — a real address, shown as a short readable link
   //   { text }        — a handle or similar, shown as plain text
@@ -875,17 +904,7 @@
 
     const href = contactHref(value);
     if (href) {
-      let label = value;
-      if (href.startsWith("mailto:")) {
-        label = href.slice(7);
-      } else {
-        try {
-          label = new URL(href).host.replace(/^www\./i, "");
-        } catch {
-          /* keep the raw value as the label */
-        }
-      }
-      return { href, label };
+      return { href, label: contactLabel(href, value) };
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
     return { text: value };
@@ -1252,20 +1271,40 @@
     renderProgress();
   }
 
-  // A picture with nothing written under it — the details live in the
-  // tooltip instead, so the wall reads as images alone.
-  function buildPlainItem(p) {
-    const bits = [];
-    bits.push(p.numbers.length > 1 ? `numbers ${p.numbers.join(", ")}` : `number ${p.numbers[0]}`);
-    bits.push(p.submitter || "anonymous");
-    if (p.theirNumber) bits.push(`method no. ${p.theirNumber}`);
-    if (p.contact) bits.push(p.contact);
-    if (p.location) bits.push(p.location);
-    if (p.foundAt) bits.push(`found ${formatFoundAt(p.foundAt)}`);
-    bits.push(`published ${relativeTime(p.uploaded)}`);
-    if (p.comments) bits.push(`“${p.comments}”`);
-    const summary = bits.join(" · ");
+  // The numbers a picture is filed under, each linking to its page.
+  function numbersCaption(p) {
+    const span = document.createElement("span");
+    p.numbers.forEach((n, idx) => {
+      if (idx) span.appendChild(document.createTextNode(", "));
+      const a = document.createElement("a");
+      a.href = n >= 1 && n <= 100 ? `#/${n}` : "#/misc";
+      a.textContent = n;
+      span.appendChild(a);
+    });
+    return span;
+  }
 
+  // Tooltip text for the quiet walls. Native title tooltips honour newlines,
+  // so this reads as three lines rather than one long run:
+  //   4 Sasha (100) @handle
+  //   found 3 Oct 2021
+  //   published 2 days ago
+  function plainTooltip(p) {
+    const head = [p.numbers.join(", "), p.submitter || "anonymous"];
+    if (p.theirNumber) head.push(`(${p.theirNumber})`);
+    const contact = contactDisplay(p.contact);
+    if (contact) head.push(contact.label || contact.text);
+
+    const lines = [head.join(" ")];
+    if (p.foundAt) lines.push(`found ${formatFoundAt(p.foundAt)}`);
+    lines.push(`published ${relativeTime(p.uploaded)}`);
+    return lines.join("\n");
+  }
+
+  // A picture with nothing written under it — the details live in the
+  // tooltip instead. With `withNumbers`, the numbers alone appear below the
+  // picture as links, and nothing else.
+  function buildPlainItem(p, withNumbers = false) {
     const item = document.createElement("div");
     item.className = "gallery-item gallery-item-plain";
 
@@ -1273,7 +1312,7 @@
     link.href = imgUrl(p.key);
     link.target = "_blank";
     link.rel = "noopener";
-    link.title = summary;
+    link.title = plainTooltip(p);
 
     const img = document.createElement("img");
     img.loading = "lazy";
@@ -1284,6 +1323,13 @@
     img.src = imgUrl(p.key);
     link.appendChild(img);
     item.appendChild(link);
+
+    if (withNumbers) {
+      const caption = document.createElement("div");
+      caption.className = "gallery-caption";
+      caption.appendChild(numbersCaption(p));
+      item.appendChild(caption);
+    }
     return item;
   }
 
@@ -1298,8 +1344,11 @@
     }
   }
 
-  function renderAll(plain = false) {
-    document.title = plain ? "numberwang — pictures only" : "numberwang — all pictures";
+  // mode: "full" | "plain" | "numbers"
+  function renderAll(mode = "full") {
+    const plain = mode !== "full";
+    document.title =
+      mode === "full" ? "numberwang — all pictures" : "numberwang — pictures only";
     setWordmark("The Game Where We Collect Numbers");
     const mine = loadMyUploads();
     const prefs = Object.assign({ sort: "added", dir: "desc", width: 220 }, loadAllPrefs());
@@ -1383,18 +1432,6 @@
       number: (p) => Math.min(...p.numbers),
     };
 
-    function numbersCaption(p) {
-      const span = document.createElement("span");
-      p.numbers.forEach((n, idx) => {
-        if (idx) span.appendChild(document.createTextNode(", "));
-        const a = document.createElement("a");
-        a.href = n >= 1 && n <= 100 ? `#/${n}` : "#/misc";
-        a.textContent = n;
-        span.appendChild(a);
-      });
-      return span;
-    }
-
     let items = [];
     let currentCols = 0;
 
@@ -1428,7 +1465,7 @@
       });
       items = sorted.map((p, i) =>
         plain
-          ? buildPlainItem(p)
+          ? buildPlainItem(p, mode === "numbers")
           : buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
       );
       layout();
