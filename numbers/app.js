@@ -865,11 +865,10 @@
     return null;
   }
 
-  // What to print for a link. A bare host is useless for social profiles —
-  // "instagram.com" doesn't say whose account it is — so the path is kept
-  // and, on the platforms where the first path segment *is* the account
-  // name, shown as a handle.
-  const HANDLE_HOSTS = /^(www\.)?(instagram|twitter|x|facebook|tiktok|threads|t|telegram|vk|github|behance|dribbble|medium|substack|soundcloud|bandcamp|flickr|pinterest)\.(com|me|org|net)$/i;
+  // What to print for a link: host plus path, so a profile reads
+  // "instagram.com/dima.photos" rather than a bare "instagram.com" that
+  // doesn't say whose account it is. Only the scheme and a leading www are
+  // dropped; long paths are truncated rather than hidden.
   const MAX_LABEL = 42;
 
   function contactLabel(href, raw) {
@@ -883,9 +882,6 @@
     const host = url.host.replace(/^www\./i, "");
     const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
     if (!path) return host;
-
-    const first = path.split("/")[0].replace(/^@/, "");
-    if (HANDLE_HOSTS.test(url.host) && first) return `@${first}`;
 
     const full = `${host}/${path}`;
     return full.length > MAX_LABEL ? `${full.slice(0, MAX_LABEL - 1)}…` : full;

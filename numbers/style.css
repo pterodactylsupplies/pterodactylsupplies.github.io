@@ -46,6 +46,18 @@ a:hover { text-decoration: underline; }
   max-width: var(--content-max);
   margin: 0 auto;
   padding: 24px 24px 12px;
+  position: relative;
+}
+
+/* The rule is drawn inset by the masthead's own padding rather than as a
+   plain border, so it lines up with the content below it — a border would
+   span the padding too and overhang the page's text on both sides. */
+.mast::after {
+  content: "";
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 0;
   border-bottom: 1px solid var(--border);
 }
 
