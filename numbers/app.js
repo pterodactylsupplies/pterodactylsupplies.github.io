@@ -41,6 +41,7 @@
     ["submitter", ".f-submitter"],
     ["theirNumber", ".f-their-number"],
     ["favoriteNumber", ".f-favorite-number"],
+    ["contact", ".f-contact"],
     ["location", ".f-location"],
     ["foundAt", ".f-found-at"],
     ["comments", ".f-comments"],
@@ -154,33 +155,74 @@
 
   // ---- EXIF (GPS + capture date), read straight from the JPEG bytes ----
   // No library — this is a small hand-rolled reader scoped to just the two
-  // tags we need. Returns {} for non-JPEGs or files with no EXIF segment.
-  async function readExif(file) {
-    if (file.type !== "image/jpeg" && file.type !== "image/jpg") return {};
-    let view;
-    try {
-      const buf = await file.slice(0, 128 * 1024).arrayBuffer();
-      view = new DataView(buf);
-    } catch {
-      return {};
-    }
-    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return {};
+  // tags we need. Returns {} when there's nothing readable; `reason` says
+  // why, so the form can explain itself instead of just going blank.
+  //
+  // Phones are the hard case here: the file's reported MIME type is often
+  // wrong or empty coming out of a photo picker, and some cameras put a big
+  // thumbnail or maker-note blob ahead of the GPS data — so we sniff the
+  // real bytes rather than trusting file.type, and read a generous window.
+  const EXIF_SCAN_BYTES = 2 * 1024 * 1024;
 
+  function sniffImageKind(view) {
+    if (view.byteLength >= 3 &&
+        view.getUint8(0) === 0xff && view.getUint8(1) === 0xd8 && view.getUint8(2) === 0xff) {
+      return "jpeg";
+    }
+    // ISO-BMFF container ("....ftypXXXX") — HEIC/HEIF, as iPhones store photos
+    if (view.byteLength >= 12 && view.getUint32(4) === 0x66747970) {
+      const brand = String.fromCharCode(
+        view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11)
+      );
+      if (/^(heic|heix|hevc|hevx|mif1|msf1|heim|heis)$/.test(brand)) return "heic";
+      return "bmff";
+    }
+    if (view.byteLength >= 8 && view.getUint32(0) === 0x89504e47) return "png";
+    return "other";
+  }
+
+  // Walk the JPEG segment chain looking for the APP1 "Exif\0\0" marker.
+  function findExifOffset(view) {
     let offset = 2;
-    let exifOffset = null;
-    while (offset < view.byteLength - 4) {
+    while (offset + 4 <= view.byteLength) {
       const marker = view.getUint16(offset);
       if ((marker & 0xff00) !== 0xff00) break;
-      if (marker === 0xffd9 || marker === 0xffda) break;
+      if (marker === 0xffd9 || marker === 0xffda) break; // image data starts
       const size = view.getUint16(offset + 2);
+      if (size < 2) break; // malformed length, don't loop forever
       if (marker === 0xffe1 && offset + 10 <= view.byteLength &&
           view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0x0000) {
-        exifOffset = offset + 10;
-        break;
+        return offset + 10;
       }
       offset += 2 + size;
     }
-    if (exifOffset == null || exifOffset + 8 > view.byteLength) return {};
+    // Segment walking failed (a non-standard segment can derail it) — fall
+    // back to scanning for the signature directly.
+    for (let i = 2; i + 10 <= view.byteLength; i++) {
+      if (view.getUint8(i) === 0xff && view.getUint8(i + 1) === 0xe1 &&
+          view.getUint32(i + 4) === 0x45786966 && view.getUint16(i + 8) === 0x0000) {
+        return i + 10;
+      }
+    }
+    return null;
+  }
+
+  async function readExif(file) {
+    let view;
+    try {
+      const buf = await file.slice(0, EXIF_SCAN_BYTES).arrayBuffer();
+      view = new DataView(buf);
+    } catch {
+      return { reason: "unreadable" };
+    }
+    if (view.byteLength < 12) return { reason: "unreadable" };
+
+    const kind = sniffImageKind(view);
+    if (kind === "heic") return { reason: "heic" };
+    if (kind !== "jpeg") return { reason: "no-exif" }; // PNG/WebP carry none
+
+    const exifOffset = findExifOffset(view);
+    if (exifOffset == null || exifOffset + 8 > view.byteLength) return { reason: "no-exif" };
 
     try {
       const little = view.getUint16(exifOffset) === 0x4949;
@@ -205,7 +247,7 @@
         const at = len <= 4 ? entry.valueOffset : exifOffset + get32(entry.valueOffset);
         let s = "";
         for (let i = 0; i < len - 1; i++) s += String.fromCharCode(view.getUint8(at + i));
-        return s;
+        return s.replace(/\0/g, "").trim();
       };
       const readRationalArray = (entry) => {
         const at = exifOffset + get32(entry.valueOffset);
@@ -226,21 +268,30 @@
       if (ifd0[0x8825]) {
         const gpsIfd = readIFD(exifOffset + get32(ifd0[0x8825].valueOffset));
         if (gpsIfd[1] && gpsIfd[2] && gpsIfd[3] && gpsIfd[4]) {
-          const latRef = readString(gpsIfd[1]);
-          const [d1, m1, s1] = readRationalArray(gpsIfd[2]);
-          const lonRef = readString(gpsIfd[3]);
-          const [d2, m2, s2] = readRationalArray(gpsIfd[4]);
+          const latRef = readString(gpsIfd[1]).toUpperCase();
+          const [d1 = 0, m1 = 0, s1 = 0] = readRationalArray(gpsIfd[2]);
+          const lonRef = readString(gpsIfd[3]).toUpperCase();
+          const [d2 = 0, m2 = 0, s2 = 0] = readRationalArray(gpsIfd[4]);
           let lat = d1 + m1 / 60 + s1 / 3600;
           let lon = d2 + m2 / 60 + s2 / 3600;
           if (latRef === "S") lat = -lat;
           if (lonRef === "W") lon = -lon;
-          result.lat = lat;
-          result.lon = lon;
+          // Some cameras write an all-zero GPS block when they had no fix —
+          // that's null island, not a real place.
+          const usable =
+            Number.isFinite(lat) && Number.isFinite(lon) &&
+            Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+            !(lat === 0 && lon === 0);
+          if (usable) {
+            result.lat = lat;
+            result.lon = lon;
+          }
         }
       }
+      if (result.lat == null) result.reason = "no-gps";
       return result;
     } catch {
-      return {}; // malformed EXIF — just skip it
+      return { reason: "unreadable" }; // malformed EXIF — just skip it
     }
   }
 
@@ -339,6 +390,22 @@
   // stripped on conversion, etc.) — when that happens we uncheck the box
   // and unlock the field instead of leaving it stuck empty and disabled,
   // since that reads as "broken" rather than "no data in this photo".
+  // Phones commonly hand over photos with the location already stripped —
+  // by the camera's own settings, or by the photo picker on the way out.
+  // Naming the likely cause beats a blank field the person can't explain.
+  function locationHint(exif) {
+    if (exif.reason === "heic") {
+      return "couldn't read this photo's data — type the place in";
+    }
+    if (exif.lat == null && exif.reason === "no-gps") {
+      return "this photo has no location saved — type it in";
+    }
+    if (exif.reason === "no-exif" || exif.reason === "unreadable") {
+      return "this photo carries no location — type it in";
+    }
+    return "couldn't find a location — type it in"; // had GPS, geocoding failed
+  }
+
   async function applyExifMetadata(container, file) {
     const exif = await readExif(file);
 
@@ -374,7 +441,7 @@
       }
       if (!locInput.value) {
         autoUncheck(locCheckbox);
-        locInput.placeholder = "no location found in this photo — type it in";
+        locInput.placeholder = locationHint(exif);
       }
     }
 
@@ -491,54 +558,124 @@
     heading.textContent = "Photo terms";
     section.appendChild(heading);
 
-    const paragraphs = [
+    const addParagraphs = (texts) => {
+      texts.forEach((text) => {
+        const p = document.createElement("p");
+        p.className = "terms-copy";
+        p.textContent = text;
+        section.appendChild(p);
+      });
+    };
+    const addHeading = (text) => {
+      const h = document.createElement("h2");
+      h.className = "terms-heading";
+      h.textContent = text;
+      section.appendChild(h);
+    };
+    const addList = (items) => {
+      const ul = document.createElement("ul");
+      ul.className = "terms-copy";
+      items.forEach((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        ul.appendChild(li);
+      });
+      section.appendChild(ul);
+    };
+
+    addParagraphs([
       "By submitting a photo to Give or Take, you confirm it's yours to share, and you give anyone — us, other visitors, anyone on the internet — permission to use, copy, modify, print, or republish it, for any purpose, without asking first and without paying you. You're not giving up ownership of the photo — you're just saying nobody needs your permission to use it.",
       "Don't submit a photo you don't have the rights to share, or one that includes other identifiable people without their OK.",
       "Photos publish immediately and are not reviewed before appearing on the site.",
-    ];
-    paragraphs.forEach((text) => {
-      const p = document.createElement("p");
-      p.className = "terms-copy";
-      p.textContent = text;
-      section.appendChild(p);
-    });
+    ]);
+
+    addHeading("What's stored on your device");
+    addParagraphs([
+      "This site sets no cookies and runs no analytics or advertising trackers. It does keep a few things in your browser's own storage, purely so the site works the way you'd expect:",
+    ]);
+    addList([
+      "what you last typed into the form — your name, contact, location and so on — so you don't have to type it again next time",
+      "a private token for each picture you add, which is the only thing that lets you remove that picture later",
+      "which pictures you'd already seen, to work out the “new since your last visit” count",
+      "your sorting and picture-size choices on the all-pictures page",
+    ]);
+    addParagraphs([
+      "None of that is sent anywhere or shared with anyone — it stays in your browser, on this device. Clearing your browsing data wipes it, including the tokens that let you delete your own pictures, so those pictures would stay up.",
+    ]);
+
+    addHeading("What leaves your device");
+    addList([
+      "The photo and everything you type alongside it — name, contact, location, date, comments — are published publicly on this site for anyone to see.",
+      "Pictures and their details are stored on Cloudflare, which hosts this project's back end.",
+      "If you let a photo fill in its own location, the coordinates from that photo are sent to OpenStreetMap's Nominatim service to turn them into a place name. If you type a location instead, what you type is sent there to fetch suggestions.",
+      "Nothing else is shared, and nothing is sold.",
+    ]);
 
     app.replaceChildren(section);
   }
 
   // ---- "new since your last visit" ----
-  // Per-browser only (no accounts): the baseline is the timestamp of the
-  // previous visit, kept in localStorage. It's pinned in sessionStorage for
-  // the duration of this visit so reloading and moving between pages keeps
-  // showing the same count, rather than zeroing it the moment you look.
-  const LAST_VISIT_KEY = "numbersGallery.lastVisit";
+  // Per-browser only, since there are no accounts.
+  //
+  // The baseline is the newest photo's own upload timestamp as of your last
+  // visit — deliberately NOT the wall-clock time you visited. Comparing the
+  // device's clock against server timestamps made the count drift whenever
+  // the two disagreed (phone clocks are routinely off by minutes), which is
+  // what made this unstable. Server times compared against server times
+  // can't drift.
+  //
+  // It's pinned in sessionStorage for the length of a visit so reloading or
+  // moving between pages keeps showing the same count instead of zeroing it
+  // before you've had a chance to go and look.
+  const LAST_SEEN_KEY = "numbersGallery.lastSeenNewest";
   const VISIT_BASELINE_KEY = "numbersGallery.visitBaseline";
   let visitBaseline; // undefined until resolved once per page load
+
+  function newestUploadedAt(entries) {
+    let newest = 0;
+    for (const p of entries) {
+      const t = new Date(p.uploaded).getTime();
+      if (Number.isFinite(t) && t > newest) newest = t;
+    }
+    return newest;
+  }
 
   function getVisitBaseline() {
     if (visitBaseline !== undefined) return visitBaseline;
     try {
       let pinned = sessionStorage.getItem(VISIT_BASELINE_KEY);
       if (pinned === null) {
-        // first page of a new visit: this visit's baseline is when the
-        // previous one happened (null on a first-ever visit), and "now"
-        // becomes the baseline for whatever visit comes next.
-        pinned = localStorage.getItem(LAST_VISIT_KEY) || "";
+        // First page of a new visit: compare against whatever was newest
+        // when we were last here ("" on a first-ever visit, which shows no
+        // badge — there's no "since" to speak of yet).
+        pinned = localStorage.getItem(LAST_SEEN_KEY) || "";
         sessionStorage.setItem(VISIT_BASELINE_KEY, pinned);
-        localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
       }
-      visitBaseline = pinned || null;
+      visitBaseline = pinned ? Number(pinned) || 0 : 0;
     } catch {
-      visitBaseline = null; // storage blocked — just skip the feature
+      visitBaseline = 0; // storage blocked (private mode) — skip the feature
     }
     return visitBaseline;
   }
 
-  function countAddedSince(iso) {
-    if (!iso) return 0;
-    const since = new Date(iso).getTime();
-    if (!Number.isFinite(since)) return 0;
-    return allEntries().filter((p) => new Date(p.uploaded).getTime() > since).length;
+  function countAddedSince(baseline, entries) {
+    if (!baseline) return 0;
+    return entries.filter((p) => {
+      const t = new Date(p.uploaded).getTime();
+      return Number.isFinite(t) && t > baseline;
+    }).length;
+  }
+
+  // Remember the newest photo we've shown, so the next visit compares
+  // against it. Safe to call repeatedly; only ever moves forward.
+  function rememberSeen(newest) {
+    if (!newest) return;
+    try {
+      const prev = Number(localStorage.getItem(LAST_SEEN_KEY)) || 0;
+      if (newest > prev) localStorage.setItem(LAST_SEEN_KEY, String(newest));
+    } catch {
+      /* storage blocked — nothing to remember with */
+    }
   }
 
   function renderProgress() {
@@ -546,8 +683,10 @@
       const n = parseInt(k, 10);
       return n >= 1 && n <= 100 && list.length > 0;
     }).length;
-    const total = allEntries().length;
-    const added = countAddedSince(getVisitBaseline());
+    const entries = allEntries();
+    const total = entries.length;
+    const added = countAddedSince(getVisitBaseline(), entries);
+    rememberSeen(newestUploadedAt(entries));
 
     let html = `<strong>${collected}</strong> of 100 collected`;
     html += ` &middot; <strong>${total}</strong> pics`;
@@ -615,6 +754,70 @@
     renderProgress();
   }
 
+  // Turns a contributor's contact string into a URL. Accepts http:// and
+  // https:// as typed, e-mail addresses, and bare domains with or without
+  // www and with or without a path ("pterodactyl.supplies", "example.com/me").
+  // Bare domains get https:// since that's what a browser's address bar
+  // would try first. Anything else — a handle, a phone number, free text —
+  // returns null and is simply not linked.
+  function contactHref(raw) {
+    const value = String(raw || "").trim();
+    if (!value) return null;
+    if (/^https?:\/\/\S+$/i.test(value)) return value;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return `mailto:${value}`;
+    if (/^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)*\.[a-z]{2,}(\/\S*)?$/i.test(value)) {
+      return `https://${value}`;
+    }
+    return null;
+  }
+
+  // Decides how a contact should appear beside the name:
+  //   { href, label } — a real address, shown as a short readable link
+  //   { text }        — a handle or similar, shown as plain text
+  //   null            — nothing worth showing
+  // Anything still wearing a URL scheme we don't trust (javascript:, data:)
+  // is dropped outright rather than printed: it's either junk or a trick,
+  // and neither belongs under someone's photo.
+  function contactDisplay(raw) {
+    const value = String(raw || "").trim();
+    if (!value) return null;
+
+    const href = contactHref(value);
+    if (href) {
+      let label = value;
+      if (href.startsWith("mailto:")) {
+        label = href.slice(7);
+      } else {
+        try {
+          label = new URL(href).host.replace(/^www\./i, "");
+        } catch {
+          /* keep the raw value as the label */
+        }
+      }
+      return { href, label };
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
+    return { text: value };
+  }
+
+  // The link shown next to the contributor's name. The visible label is the
+  // domain (or e-mail address), so people can see where they're going before
+  // they click; the full URL rides along in the title. Outbound links get
+  // noopener/noreferrer, plus nofollow/ugc so the gallery can't be farmed
+  // for SEO.
+  function contactNode(display) {
+    if (display.text) return document.createTextNode(display.text);
+    const a = document.createElement("a");
+    a.href = display.href;
+    a.textContent = display.label;
+    a.title = display.href;
+    if (!display.href.startsWith("mailto:")) {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer nofollow ugc";
+    }
+    return a;
+  }
+
   function buildGalleryItem(p, i, total, currentN, mine, opts = {}) {
     const item = document.createElement("div");
     item.className = "gallery-item";
@@ -642,7 +845,17 @@
     const meta = document.createElement("div");
     meta.className = "gallery-meta";
     const name = p.submitter || "anonymous";
-    const bits = [p.theirNumber ? `${name} (${p.theirNumber})` : name];
+    const nameText = p.theirNumber ? `${name} (${p.theirNumber})` : name;
+    meta.appendChild(document.createTextNode(nameText));
+
+    // Contact sits immediately after the name, as its own item.
+    const contact = contactDisplay(p.contact);
+    if (contact) {
+      meta.appendChild(document.createTextNode(" · "));
+      meta.appendChild(contactNode(contact));
+    }
+
+    const bits = [];
     if (opts.caption) {
       // the caption already names the photo's numbers — no "marked" bit
     } else if (currentN != null) {
@@ -654,7 +867,7 @@
     if (p.location) bits.push(p.location);
     if (p.foundAt) bits.push(`found ${formatFoundAt(p.foundAt)}`);
     bits.push(`published ${relativeTime(p.uploaded)}`);
-    meta.textContent = bits.join(" · ");
+    meta.appendChild(document.createTextNode(` · ${bits.join(" · ")}`));
     item.appendChild(meta);
 
     if (p.comments) {
@@ -1069,7 +1282,7 @@
   function buildAlsoShowsField() {
     const block = document.createElement("div");
     block.className = "meta-field-block";
-    block.appendChild(buildTextField("also shows numbers (optional)", "f-also-numbers"));
+    block.appendChild(buildTextField("also shows numbers", "f-also-numbers"));
     const hint = document.createElement("p");
     hint.className = "upload-helper";
     hint.textContent = "shows more than one number? separate with commas";
@@ -1078,18 +1291,33 @@
   }
 
   function appendSharedFields(container) {
-    container.appendChild(buildTextField("your name", "f-submitter", true));
-    container.appendChild(buildFieldPairRow());
+    const contactField = buildTextField("contact", "f-contact");
+    contactField.querySelector("input").maxLength = 200;
+    container.appendChild(
+      buildPairRow(buildTextField("your name", "f-submitter", true), contactField)
+    );
+
+    const contactHint = document.createElement("p");
+    contactHint.className = "number-hint";
+    contactHint.textContent = "contact is shown publicly, linked where possible";
+    container.appendChild(contactHint);
+
+    container.appendChild(
+      buildPairRow(
+        buildTextField("your method number", "f-their-number"),
+        buildTextField("favorite number", "f-favorite-number")
+      )
+    );
     container.appendChild(buildLocationField());
     container.appendChild(buildWhenField());
     container.appendChild(buildTextareaField("comments", "f-comments"));
   }
 
-  function buildFieldPairRow() {
+  function buildPairRow(left, right) {
     const row = document.createElement("div");
     row.className = "field-pair-row";
-    row.appendChild(buildTextField("your number", "f-their-number"));
-    row.appendChild(buildTextField("favorite number", "f-favorite-number"));
+    row.appendChild(left);
+    row.appendChild(right);
     return row;
   }
 
@@ -1100,6 +1328,7 @@
       submitter: container.querySelector(".f-submitter").value,
       theirNumber: container.querySelector(".f-their-number").value,
       favoriteNumber: container.querySelector(".f-favorite-number").value,
+      contact: container.querySelector(".f-contact").value,
       comments: container.querySelector(".f-comments").value,
       consent: container.querySelector(".f-consent").checked,
     };
@@ -1305,6 +1534,7 @@
         if (meta.foundAt) form.append("foundAt", meta.foundAt);
         if (meta.theirNumber) form.append("theirNumber", meta.theirNumber);
         if (meta.favoriteNumber) form.append("favoriteNumber", meta.favoriteNumber);
+        if (meta.contact) form.append("contact", meta.contact);
         if (meta.comments) form.append("comments", meta.comments);
         const res = await fetch(`${API}/api/upload`, { method: "POST", body: form });
         const body = await res.json();
@@ -1549,6 +1779,47 @@
 
     return { openModal, closeModal };
   }
+
+  // ---- "report a bug" ----
+  // Split in two and joined at runtime so the address isn't sitting in the
+  // page source for address-harvesting crawlers to scrape. Fill these in
+  // with a project-only address — not a personal or work inbox.
+  const BUG_EMAIL_USER = "reportnumbers";
+  const BUG_EMAIL_DOMAIN = "pterodactyl.supplies";
+
+  const GITHUB_ISSUES_URL =
+    "https://github.com/pterodactylsupplies/pterodactylsupplies.github.io/issues/new";
+
+  function wireBugReport() {
+    const subject = "Give or Take 100 — bug report";
+    // Pre-filled so reports arrive with the context that actually helps:
+    // which page, which device. The person can delete any of it.
+    const body = [
+      "What happened:",
+      "",
+      "What you expected:",
+      "",
+      "---",
+      `Page: ${location.href}`,
+      `Browser: ${navigator.userAgent}`,
+    ].join("\n");
+
+    const mailLink = document.getElementById("report-bug");
+    if (mailLink) {
+      const to = BUG_EMAIL_USER && BUG_EMAIL_DOMAIN ? `${BUG_EMAIL_USER}@${BUG_EMAIL_DOMAIN}` : "";
+      mailLink.href =
+        `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+
+    const ghLink = document.getElementById("report-github");
+    if (ghLink) {
+      ghLink.href =
+        `${GITHUB_ISSUES_URL}?title=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+  }
+  wireBugReport();
+  // the pre-filled page URL should follow the visitor around the site
+  window.addEventListener("hashchange", wireBugReport);
 
   // ---- boot ----
   window.addEventListener("hashchange", render);

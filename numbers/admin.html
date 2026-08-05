@@ -40,6 +40,13 @@
     .card-meta { font-size: 12px; color: var(--ink-2); line-height: 1.5; word-break: break-word; }
     .card-comment { font-size: 12px; font-style: italic; color: var(--ink-2); }
     .card-key { font-size: 10px; color: var(--ink-2); word-break: break-all; }
+    .card-edit { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .card-edit label { font-size: 11px; color: var(--ink-2); }
+    .card-edit input { font-family: inherit; font-size: 12px; border: 1px solid var(--border); padding: 4px 5px; background: var(--bg); color: var(--ink); width: 100%; }
+    .card-edit button { font-family: inherit; font-size: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); padding: 4px 8px; cursor: pointer; }
+    .card-edit button:hover { background: var(--hover-bg); }
+    .card-edit button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .card-edit .saved { color: var(--ink-2); font-size: 11px; }
     .card-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 8px; }
     .card button.delete { font-family: inherit; font-size: 12px; border: 1px solid var(--red); background: var(--bg); color: var(--red); padding: 5px 10px; cursor: pointer; flex: 1; }
     .card button.delete:hover { background: var(--red); color: #fff; }
@@ -189,6 +196,55 @@
       keyEl.className = "card-key";
       keyEl.textContent = p.key;
       body.appendChild(keyEl);
+
+      // contact can be filled in after the fact — most of the collection
+      // was submitted before the field existed
+      const edit = document.createElement("div");
+      edit.className = "card-edit";
+      const editLabel = document.createElement("label");
+      editLabel.textContent = "contact";
+      const editInput = document.createElement("input");
+      editInput.type = "text";
+      editInput.value = p.contact || "";
+      editInput.placeholder = "site, social, or email";
+      editInput.maxLength = 200;
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.textContent = "save contact";
+      editBtn.disabled = true;
+      const editNote = document.createElement("span");
+      editNote.className = "saved";
+
+      editInput.addEventListener("input", () => {
+        editBtn.disabled = editInput.value === (p.contact || "");
+        editNote.textContent = "";
+      });
+      editBtn.addEventListener("click", async () => {
+        editBtn.disabled = true;
+        editBtn.textContent = "saving…";
+        try {
+          const res = await fetch(`${API_BASE}/api/photo/${encodeURIComponent(p.key)}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ contact: editInput.value }),
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(out.error || `save failed (${res.status})`);
+          p.contact = out.contact;
+          editInput.value = out.contact;
+          editNote.textContent = out.contact ? "saved" : "saved (empty — not a usable address)";
+        } catch (err) {
+          editNote.textContent = err.message;
+          editBtn.disabled = false;
+        }
+        editBtn.textContent = "save contact";
+      });
+
+      edit.appendChild(editLabel);
+      edit.appendChild(editInput);
+      edit.appendChild(editBtn);
+      edit.appendChild(editNote);
+      body.appendChild(edit);
 
       const actions = document.createElement("div");
       actions.className = "card-actions";

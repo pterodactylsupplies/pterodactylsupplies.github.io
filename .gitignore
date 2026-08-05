@@ -1,0 +1,6 @@
+# Old page versions and experiments — kept locally, not published.
+_archive/
+
+# Claude Code's local config: dev-server definitions and per-machine
+# permission settings. Nothing here belongs on a public website.
+.claude/

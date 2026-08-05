@@ -379,7 +379,7 @@ body.view-grid main { max-width: none; }
 .dropzone .pick-text { text-decoration: underline; }
 .dropzone input[type="file"] { display: none; }
 
-.upload-helper { font-size: 12px; color: var(--ink-2); }
+.upload-helper { font-size: 12px; color: var(--ink-2); margin: 0; }
 .upload-status { font-size: 15px; min-height: 1.3em; }
 .upload-status.err { color: var(--red); }
 
@@ -420,12 +420,24 @@ body.view-grid main { max-width: none; }
   min-width: 0;
 }
 
-.meta-field-block { margin-bottom: 4px; }
+.meta-field-block { margin-bottom: 0; }
 
+/* Hints sit tight under the field they describe; the form's own flex gap
+   then provides the single uniform space to the next row. Paragraph
+   margins are zeroed so they can't add a second, larger gap on top. */
 .number-hint {
   font-size: 11px;
   color: var(--ink-2);
-  margin-top: -4px;
+  margin: -4px 0 0;
+}
+
+/* the number-guess hint is empty until a photo is read — don't reserve a
+   row's worth of space for text that isn't there */
+.number-hint:empty { display: none; }
+
+.meta-field-block .number-hint,
+.meta-field-block .upload-helper {
+  margin-top: 4px;
 }
 
 .checkbox-label {
@@ -445,7 +457,7 @@ body.view-grid main { max-width: none; }
 
 .consent-label {
   align-items: flex-start;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .consent-label input[type="checkbox"] {
@@ -464,6 +476,14 @@ body.view-grid main { max-width: none; }
   line-height: 1.6;
   margin: 0 0 16px;
   max-width: 65ch;
+}
+
+ul.terms-copy {
+  padding-left: 20px;
+}
+
+ul.terms-copy li {
+  margin-bottom: 6px;
 }
 
 /* ---------- "add a number" modal ---------- */
