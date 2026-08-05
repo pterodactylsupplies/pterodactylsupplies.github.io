@@ -337,6 +337,20 @@ body.view-grid main { max-width: none; }
   font-style: italic;
 }
 
+.owner-row {
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.owner-link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.owner-link:hover { background: var(--hover-bg); }
+
 .undo-link {
   color: var(--red);
   text-decoration: none;
@@ -351,6 +365,38 @@ body.view-grid main { max-width: none; }
   text-align: center;
   font-size: 18px;
 }
+
+/* ---------- "people" page ---------- */
+
+/* wide tables scroll inside their own box rather than the whole page */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.people-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.people-table th,
+.people-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.people-table th {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.people-table td.num { white-space: nowrap; }
+
+.people-table tbody tr:hover { background: var(--hover-bg); }
 
 /* ---------- Upload panel (inline, per-number / misc) ---------- */
 

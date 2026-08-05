@@ -72,6 +72,59 @@
     }
   }
 
+  // ---- editing your own pictures after the fact ----
+  // A contributor holds a deleteToken for every picture they added from this
+  // browser, and the API accepts that token for edits too — so they can fill
+  // in a contact later without an account. It only reaches pictures added
+  // from this browser, which is the honest limit of having no accounts.
+  async function patchPhoto(key, token, patch) {
+    const res = await fetch(`${API}/api/photo/${key}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `server responded ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function editOwnContact(p, linkEl) {
+    const mine = loadMyUploads();
+    const token = mine[p.key];
+    if (!token) return;
+
+    const entered = prompt(
+      "Contact to show with your pictures — a site, social link, or email:",
+      p.contact || ""
+    );
+    if (entered === null) return; // cancelled
+
+    // every picture of theirs that's still in the gallery
+    const owned = allEntries().filter((e) => mine[e.key]);
+    let targets = [p];
+    if (owned.length > 1) {
+      targets = confirm(
+        `Apply this to all ${owned.length} of your pictures? ` +
+        "Cancel to change only this one."
+      ) ? owned : [p];
+    }
+
+    const original = linkEl.textContent;
+    linkEl.textContent = "[saving…]";
+    try {
+      for (const target of targets) {
+        await patchPhoto(target.key, mine[target.key], { contact: entered });
+      }
+      await loadPhotos();
+      render();
+    } catch (err) {
+      linkEl.textContent = original;
+      alert(`Couldn't save that: ${err.message}`);
+    }
+  }
+
   async function undoUpload(key, linkEl) {
     const mine = loadMyUploads();
     const token = mine[key];
@@ -525,6 +578,9 @@
     } else if (location.hash === "#/all") {
       setView("all");
       renderAll();
+    } else if (location.hash === "#/people") {
+      setView("all");
+      renderPeople();
     } else if (location.hash === "#/misc") {
       setView("misc");
       renderMisc();
@@ -878,6 +934,19 @@
     }
 
     if (mine[p.key]) {
+      const ownerRow = document.createElement("div");
+      ownerRow.className = "owner-row";
+
+      const editContact = document.createElement("a");
+      editContact.href = "#";
+      editContact.className = "owner-link";
+      editContact.textContent = p.contact ? "[edit contact]" : "[add contact]";
+      editContact.addEventListener("click", (e) => {
+        e.preventDefault();
+        editOwnContact(p, editContact);
+      });
+      ownerRow.appendChild(editContact);
+
       const undo = document.createElement("a");
       undo.href = "#";
       undo.className = "undo-link";
@@ -888,8 +957,9 @@
           undoUpload(p.key, undo);
         }
       });
-      item.appendChild(document.createElement("br"));
-      item.appendChild(undo);
+      ownerRow.appendChild(undo);
+
+      item.appendChild(ownerRow);
     }
 
     return item;
@@ -984,6 +1054,164 @@
     hint.style.marginTop = "24px";
     hint.textContent = "Use “add a number” above to add something here.";
     section.appendChild(hint);
+
+    app.replaceChildren(section);
+    renderProgress();
+  }
+
+  // ---- "people" page (unlisted, #/people) ----
+  // Groups every picture by contributor. A method number identifies a person
+  // better than a name does — names repeat and get typed differently — so
+  // it's the grouping key whenever it's present, with the name as fallback.
+  function groupPeople() {
+    const people = new Map();
+    for (const p of allEntries()) {
+      const name = (p.submitter || "anonymous").trim();
+      const method = (p.theirNumber || "").trim();
+      const key = method ? `#${method.toLowerCase()}` : `name:${name.toLowerCase()}`;
+
+      let person = people.get(key);
+      if (!person) {
+        person = {
+          names: new Set(),
+          method,
+          contacts: new Set(),
+          photos: [],
+          numbers: new Set(),
+          locations: new Set(),
+        };
+        people.set(key, person);
+      }
+      person.names.add(name);
+      if (p.contact) person.contacts.add(p.contact);
+      if (p.location) person.locations.add(p.location);
+      p.numbers.forEach((n) => person.numbers.add(n));
+      person.photos.push(p);
+    }
+
+    return [...people.values()]
+      .map((person) => {
+        const times = person.photos
+          .map((p) => new Date(p.uploaded).getTime())
+          .filter(Number.isFinite)
+          .sort((a, b) => a - b);
+        return {
+          ...person,
+          count: person.photos.length,
+          first: times[0] || null,
+          last: times[times.length - 1] || null,
+        };
+      })
+      .sort((a, b) => b.count - a.count || [...a.names][0].localeCompare([...b.names][0]));
+  }
+
+  function renderPeople() {
+    document.title = "numberwang — people";
+    setWordmark("The Game Where We Collect Numbers");
+
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const people = groupPeople();
+    const totalPhotos = people.reduce((sum, person) => sum + person.count, 0);
+
+    const heading = document.createElement("h2");
+    heading.className = "terms-heading";
+    heading.textContent = `${people.length} ${people.length === 1 ? "person" : "people"}, ${totalPhotos} pictures`;
+    section.appendChild(heading);
+
+    if (!people.length) {
+      const empty = document.createElement("div");
+      empty.className = "no-photos";
+      empty.textContent = "Nobody has added anything yet.";
+      section.appendChild(empty);
+      app.replaceChildren(section);
+      renderProgress();
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "people-table";
+
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["person", "method no.", "contact", "pictures", "numbers", "first", "latest"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    const tbody = document.createElement("tbody");
+    for (const person of people) {
+      const tr = document.createElement("tr");
+
+      const nameCell = document.createElement("td");
+      // a person can appear under more than one spelling of their name
+      nameCell.textContent = [...person.names].join(" / ");
+      tr.appendChild(nameCell);
+
+      const methodCell = document.createElement("td");
+      methodCell.className = "num";
+      methodCell.textContent = person.method || "—";
+      tr.appendChild(methodCell);
+
+      const contactCell = document.createElement("td");
+      const contacts = [...person.contacts];
+      if (!contacts.length) {
+        contactCell.textContent = "—";
+      } else {
+        contacts.forEach((raw, i) => {
+          const display = contactDisplay(raw);
+          if (!display) return;
+          if (i) contactCell.appendChild(document.createTextNode(", "));
+          contactCell.appendChild(contactNode(display));
+        });
+        if (!contactCell.childNodes.length) contactCell.textContent = "—";
+      }
+      tr.appendChild(contactCell);
+
+      const countCell = document.createElement("td");
+      countCell.className = "num";
+      countCell.textContent = person.count;
+      tr.appendChild(countCell);
+
+      const numbersCell = document.createElement("td");
+      numbersCell.className = "num";
+      [...person.numbers]
+        .sort((a, b) => a - b)
+        .forEach((n, i) => {
+          if (i) numbersCell.appendChild(document.createTextNode(", "));
+          const a = document.createElement("a");
+          a.href = n >= 1 && n <= 100 ? `#/${n}` : "#/misc";
+          a.textContent = n;
+          numbersCell.appendChild(a);
+        });
+      tr.appendChild(numbersCell);
+
+      const firstCell = document.createElement("td");
+      firstCell.textContent = person.first ? new Date(person.first).toLocaleDateString() : "—";
+      tr.appendChild(firstCell);
+
+      const lastCell = document.createElement("td");
+      lastCell.textContent = person.last ? new Date(person.last).toLocaleDateString() : "—";
+      tr.appendChild(lastCell);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const scroller = document.createElement("div");
+    scroller.className = "table-scroll";
+    scroller.appendChild(table);
+    section.appendChild(scroller);
 
     app.replaceChildren(section);
     renderProgress();
