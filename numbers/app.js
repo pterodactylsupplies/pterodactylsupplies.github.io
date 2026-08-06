@@ -610,6 +610,11 @@
       setView("terms");
       renderTerms();
     } else if (location.hash === "#/all") {
+      // the main wall: full window, numbers under each picture, gutter at 36
+      setView("all");
+      renderAll("numbers", true, false, 36);
+    } else if (location.hash === "#/all-old") {
+      // the original capped wall with full details, kept for reference
       setView("all");
       renderAll();
     } else if (location.hash === "#/all-plain") {
@@ -631,13 +636,15 @@
       setView("misc");
       renderMisc();
     } else {
-      // "#/42" and its full-window twin "#/42/wide"
-      const wideDetail = location.hash.match(/^#\/(\d{1,3})\/wide$/);
-      const n = wideDetail ? Number(wideDetail[1]) : currentNumber();
+      // Number pages run full window by default. "#/42/narrow" keeps the old
+      // capped layout; "#/42/wide" still works, since links to it exist.
+      const suffixed = location.hash.match(/^#\/(\d{1,3})\/(wide|narrow)$/);
+      const n = suffixed ? Number(suffixed[1]) : currentNumber();
       if (n && n >= 1 && n <= 100) {
+        const narrow = suffixed ? suffixed[2] === "narrow" : false;
         setView("detail");
-        if (wideDetail) document.body.classList.add("view-wide");
-        renderDetail(n, Boolean(wideDetail));
+        if (!narrow) document.body.classList.add("view-wide");
+        renderDetail(n, narrow);
       } else {
         setView("grid");
         renderGrid();
@@ -794,7 +801,7 @@
     rememberSeen(newestUploadedAt(entries));
 
     let html = `<strong>${collected}</strong> of 100 collected`;
-    html += ` &middot; <strong>${total}</strong> pics`;
+    html += ` &middot; <a href="#/all"><strong>${total}</strong> pics</a>`;
     if (added > 0) {
       // added since the last visit — the title spells out what "+3" means
       html += ` <span class="progress-new" title="added since your last visit">(+${added})</span>`;
@@ -1026,9 +1033,10 @@
     return item;
   }
 
-  function renderDetail(n, wide = false) {
-    // prev/next keep whichever width you're browsing in
-    const numberHref = (x) => (wide ? `#/${x}/wide` : `#/${x}`);
+  function renderDetail(n, narrow = false) {
+    // prev/next keep whichever width you're browsing in; wide is the plain
+    // "#/42" form now, so only the narrow variant needs a suffix
+    const numberHref = (x) => (narrow ? `#/${x}/narrow` : `#/${x}`);
     document.title = `numberwang (${n})`;
     setWordmark(`Give or Take ${n}`);
     const photos = photosByNumber[n] || [];
@@ -1355,8 +1363,9 @@
 
   // mode: "full" | "plain" | "numbers"; wide drops the page's usual
   // max-width so the wall runs the whole window, like the grid page does;
-  // gapControl swaps the automatic gutter for a slider of its own.
-  function renderAll(mode = "full", wide = false, gapControl = false) {
+  // gapControl swaps the automatic gutter for a slider of its own; fixedGap
+  // pins it to one value with no control at all.
+  function renderAll(mode = "full", wide = false, gapControl = false, fixedGap = null) {
     const plain = mode !== "full";
     if (wide) document.body.classList.add("view-wide");
     document.title =
@@ -1490,9 +1499,12 @@
     // fixed 24px looks like a chasm between 60px thumbnails — but never grow
     // past the original spacing.
     function applyGap() {
-      const gap = gapControl
-        ? prefs.gap
-        : Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
+      const gap =
+        fixedGap != null
+          ? fixedGap
+          : gapControl
+            ? prefs.gap
+            : Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
       gallery.style.gap = `${gap}px`;
       gallery.style.setProperty("--wall-gap", `${gap}px`);
     }
