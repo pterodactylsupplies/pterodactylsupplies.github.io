@@ -621,6 +621,9 @@
     } else if (location.hash === "#/all-numbers-wide") {
       setView("all");
       renderAll("numbers", true);
+    } else if (location.hash === "#/all-numbers-wide-gap") {
+      setView("all");
+      renderAll("numbers", true, true);
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -628,10 +631,13 @@
       setView("misc");
       renderMisc();
     } else {
-      const n = currentNumber();
-      if (n) {
+      // "#/42" and its full-window twin "#/42/wide"
+      const wideDetail = location.hash.match(/^#\/(\d{1,3})\/wide$/);
+      const n = wideDetail ? Number(wideDetail[1]) : currentNumber();
+      if (n && n >= 1 && n <= 100) {
         setView("detail");
-        renderDetail(n);
+        if (wideDetail) document.body.classList.add("view-wide");
+        renderDetail(n, Boolean(wideDetail));
       } else {
         setView("grid");
         renderGrid();
@@ -1020,7 +1026,9 @@
     return item;
   }
 
-  function renderDetail(n) {
+  function renderDetail(n, wide = false) {
+    // prev/next keep whichever width you're browsing in
+    const numberHref = (x) => (wide ? `#/${x}/wide` : `#/${x}`);
     document.title = `numberwang (${n})`;
     setWordmark(`Give or Take ${n}`);
     const photos = photosByNumber[n] || [];
@@ -1040,12 +1048,12 @@
     const navRow = document.createElement("div");
     navRow.className = "detail-nav-row";
     navRow.innerHTML = `
-      <a href="#/${prevN}">&larr; ${prevN}</a>
+      <a href="${numberHref(prevN)}">&larr; ${prevN}</a>
       <div class="detail-center">
         <div class="detail-number">${n}</div>
         <div class="detail-meta">${photos.length} picture${photos.length === 1 ? "" : "s"} on file</div>
       </div>
-      <a href="#/${nextN}">${nextN} &rarr;</a>`;
+      <a href="${numberHref(nextN)}">${nextN} &rarr;</a>`;
     section.appendChild(navRow);
 
     if (photos.length) {
@@ -1346,15 +1354,19 @@
   }
 
   // mode: "full" | "plain" | "numbers"; wide drops the page's usual
-  // max-width so the wall runs the whole window, like the grid page does.
-  function renderAll(mode = "full", wide = false) {
+  // max-width so the wall runs the whole window, like the grid page does;
+  // gapControl swaps the automatic gutter for a slider of its own.
+  function renderAll(mode = "full", wide = false, gapControl = false) {
     const plain = mode !== "full";
     if (wide) document.body.classList.add("view-wide");
     document.title =
       mode === "full" ? "numberwang — all pictures" : "numberwang — pictures only";
     setWordmark("The Game Where We Collect Numbers");
     const mine = loadMyUploads();
-    const prefs = Object.assign({ sort: "added", dir: "desc", width: 220 }, loadAllPrefs());
+    const prefs = Object.assign(
+      { sort: "added", dir: "desc", width: 220, gap: 12 },
+      loadAllPrefs()
+    );
     const savePrefs = () => localStorage.setItem(ALL_PREFS_KEY, JSON.stringify(prefs));
 
     const section = document.createElement("section");
@@ -1421,7 +1433,36 @@
     sizeRange.step = "10";
     sizeRange.value = String(prefs.width);
     sizeLabel.appendChild(sizeRange);
+    const sizeValue = document.createElement("span");
+    sizeValue.className = "range-value";
+    sizeLabel.appendChild(sizeValue);
     controls.appendChild(sizeLabel);
+
+    // Only on the page that asks for it: a gutter of your choosing, held
+    // steady as the pictures resize rather than scaling along with them.
+    let gapRange = null;
+    let gapValue = null;
+    if (gapControl) {
+      const gapLabel = document.createElement("label");
+      gapLabel.appendChild(document.createTextNode("gap"));
+      gapRange = document.createElement("input");
+      gapRange.type = "range";
+      gapRange.min = "0";
+      gapRange.max = "60";
+      gapRange.step = "1";
+      gapRange.value = String(prefs.gap);
+      gapLabel.appendChild(gapRange);
+      gapValue = document.createElement("span");
+      gapValue.className = "range-value";
+      gapLabel.appendChild(gapValue);
+      controls.appendChild(gapLabel);
+    }
+
+    function showRangeValues() {
+      sizeValue.textContent = `${prefs.width}px`;
+      if (gapValue) gapValue.textContent = `${prefs.gap}px`;
+    }
+    showRangeValues();
 
     section.appendChild(controls);
 
@@ -1444,10 +1485,14 @@
       return Math.max(1, Math.floor((gallery.clientWidth || 0) / prefs.width) || 1);
     }
 
-    // Gutters shrink with the pictures — a fixed 24px looks like a chasm
-    // between 60px thumbnails — but never grow past the original spacing.
+    // With a gutter slider the value is taken literally and stays put as the
+    // pictures resize. Without one, gutters shrink with the pictures — a
+    // fixed 24px looks like a chasm between 60px thumbnails — but never grow
+    // past the original spacing.
     function applyGap() {
-      const gap = Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
+      const gap = gapControl
+        ? prefs.gap
+        : Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
       gallery.style.gap = `${gap}px`;
       gallery.style.setProperty("--wall-gap", `${gap}px`);
     }
@@ -1499,11 +1544,23 @@
     sizeRange.addEventListener("input", () => {
       prefs.width = Number(sizeRange.value);
       savePrefs();
+      showRangeValues();
       // gutters track the size on every nudge; the columns only need
       // re-dealing when the count actually changes
       if (colCount() !== currentCols) layout();
       else applyGap();
     });
+
+    if (gapRange) {
+      gapRange.addEventListener("input", () => {
+        prefs.gap = Number(gapRange.value);
+        savePrefs();
+        showRangeValues();
+        // a wider gutter leaves less room, so the column count can change
+        if (colCount() !== currentCols) layout();
+        else applyGap();
+      });
+    }
 
     const onResize = () => {
       if (!document.contains(gallery)) {

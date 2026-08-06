@@ -302,6 +302,13 @@ body.view-grid main { max-width: none; }
   accent-color: var(--ink);
 }
 
+/* live readout beside a slider — fixed width so the controls don't shuffle
+   sideways as the number changes while dragging */
+.range-value {
+  min-width: 5ch;
+  color: var(--ink-2);
+}
+
 /* JS-dealt masonry: N column stacks, items distributed round-robin so the
    wall reads left-to-right row by row (CSS columns would read top-to-bottom
    down each column instead). */
@@ -317,9 +324,10 @@ body.view-grid main { max-width: none; }
   min-width: 0;
 }
 
-/* pictures-only wall: vertical spacing tracks the column gutters, so the
-   wall stays even as the size slider moves */
-.gallery-item-plain { margin-bottom: var(--wall-gap, 12px); }
+/* Pictures-only wall: vertical spacing tracks the column gutters so the wall
+   stays even. Two classes deep on purpose — plain .gallery-item sets its own
+   margin-bottom further down the file and would otherwise win on order. */
+.gallery-item.gallery-item-plain { margin-bottom: var(--wall-gap, 12px); }
 
 .gallery-item {
   break-inside: avoid;
