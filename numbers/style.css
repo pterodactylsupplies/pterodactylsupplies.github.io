@@ -63,6 +63,11 @@ a:hover { text-decoration: underline; }
 
 body.view-grid .mast { max-width: none; }
 
+/* full-bleed pages: the grid, and the walls that ask for it */
+body.view-wide .mast,
+body.view-wide main,
+body.view-wide .site-footer { max-width: none; }
+
 .mast-row1 {
   display: flex;
   justify-content: space-between;
@@ -312,8 +317,9 @@ body.view-grid main { max-width: none; }
   min-width: 0;
 }
 
-/* pictures-only wall: tighter, since there's no text to separate them */
-.gallery-item-plain { margin-bottom: 12px; }
+/* pictures-only wall: vertical spacing tracks the column gutters, so the
+   wall stays even as the size slider moves */
+.gallery-item-plain { margin-bottom: var(--wall-gap, 12px); }
 
 .gallery-item {
   break-inside: avoid;

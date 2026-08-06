@@ -595,6 +595,8 @@
 
   function setView(view) {
     document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all");
+    // full-bleed is opt-in per page; cleared here so it can't leak between views
+    document.body.classList.remove("view-wide");
     document.body.classList.add(`view-${view}`);
   }
 
@@ -616,6 +618,9 @@
     } else if (location.hash === "#/all-numbers") {
       setView("all");
       renderAll("numbers");
+    } else if (location.hash === "#/all-numbers-wide") {
+      setView("all");
+      renderAll("numbers", true);
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -1340,9 +1345,11 @@
     }
   }
 
-  // mode: "full" | "plain" | "numbers"
-  function renderAll(mode = "full") {
+  // mode: "full" | "plain" | "numbers"; wide drops the page's usual
+  // max-width so the wall runs the whole window, like the grid page does.
+  function renderAll(mode = "full", wide = false) {
     const plain = mode !== "full";
+    if (wide) document.body.classList.add("view-wide");
     document.title =
       mode === "full" ? "numberwang — all pictures" : "numberwang — pictures only";
     setWordmark("The Game Where We Collect Numbers");
@@ -1407,9 +1414,11 @@
     sizeLabel.appendChild(document.createTextNode("picture size"));
     const sizeRange = document.createElement("input");
     sizeRange.type = "range";
-    sizeRange.min = "120";
+    // down to thumbnail size, in finer steps than before so the small end
+    // is actually controllable rather than jumping in big increments
+    sizeRange.min = "60";
     sizeRange.max = "480";
-    sizeRange.step = "20";
+    sizeRange.step = "10";
     sizeRange.value = String(prefs.width);
     sizeLabel.appendChild(sizeRange);
     controls.appendChild(sizeLabel);
@@ -1435,9 +1444,18 @@
       return Math.max(1, Math.floor((gallery.clientWidth || 0) / prefs.width) || 1);
     }
 
+    // Gutters shrink with the pictures — a fixed 24px looks like a chasm
+    // between 60px thumbnails — but never grow past the original spacing.
+    function applyGap() {
+      const gap = Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
+      gallery.style.gap = `${gap}px`;
+      gallery.style.setProperty("--wall-gap", `${gap}px`);
+    }
+
     // Deal items into N column stacks round-robin (item i → column i % N),
     // so the wall reads left-to-right, row by row.
     function layout() {
+      applyGap();
       currentCols = colCount();
       const cols = [];
       for (let c = 0; c < currentCols; c++) {
@@ -1481,7 +1499,10 @@
     sizeRange.addEventListener("input", () => {
       prefs.width = Number(sizeRange.value);
       savePrefs();
+      // gutters track the size on every nudge; the columns only need
+      // re-dealing when the count actually changes
       if (colCount() !== currentCols) layout();
+      else applyGap();
     });
 
     const onResize = () => {
