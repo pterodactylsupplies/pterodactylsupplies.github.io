@@ -610,8 +610,18 @@
       setView("terms");
       renderTerms();
     } else if (location.hash === "#/all") {
-      // the main wall: full window, pictures up to 1000px, gutter on its own
-      // slider, numbers hidden until asked for
+      // the main wall: full window, pictures up to 1000px, gutter fixed wide,
+      // numbers hidden until asked for
+      setView("all");
+      renderAll({
+        wide: true,
+        numbersToggle: true,
+        maxWidth: 1000,
+        fixedGap: 150,
+        hideSizeValue: true,
+      });
+    } else if (location.hash === "#/all-develop") {
+      // the same wall with both sliders exposed, kept to experiment on
       setView("all");
       renderAll({
         wide: true,
@@ -620,6 +630,10 @@
         maxWidth: 1000,
         maxGap: 300,
       });
+    } else if (location.hash === "#/all-board") {
+      setView("all");
+      document.body.classList.add("view-wide");
+      renderBoard();
     } else if (location.hash === "#/all-old") {
       // the original capped wall with full details, kept for reference
       setView("all");
@@ -636,6 +650,9 @@
     } else if (location.hash === "#/all-numbers-wide-gap") {
       setView("all");
       renderAll({ mode: "numbers", wide: true, gapControl: true });
+    } else if (location.hash === "#/grid-lab") {
+      setView("grid");
+      renderGridLab();
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -868,6 +885,155 @@
     const section = document.createElement("section");
     section.className = "grid-section";
     section.appendChild(grid);
+
+    app.replaceChildren(section);
+    renderProgress();
+  }
+
+  // ---- grid lab: the same 100 cells, with the look-and-feel exposed ----
+  // A place to try cell sizes, gutters, frames, background patterns and
+  // fonts without touching the real grid. Choices are remembered.
+  const GRID_LAB_KEY = "numbersGallery.gridLab";
+  const LAB_PATTERNS = [
+    ["dots", "dots"],
+    ["none", "none"],
+    ["fine-dots", "fine dots"],
+    ["grid", "graph paper"],
+    ["cross", "crosses"],
+    ["diagonal", "diagonal lines"],
+  ];
+
+  function renderGridLab() {
+    document.title = "numberwang — grid lab";
+    setWordmark("The Game Where We Collect Numbers");
+
+    let stored = {};
+    try {
+      stored = JSON.parse(localStorage.getItem(GRID_LAB_KEY)) || {};
+    } catch {
+      stored = {};
+    }
+    const prefs = Object.assign(
+      { cell: 90, gap: 12, frames: true, pattern: "dots", font: "serif" },
+      stored
+    );
+    const savePrefs = () => {
+      try {
+        localStorage.setItem(GRID_LAB_KEY, JSON.stringify(prefs));
+      } catch {
+        /* not worth failing the page over */
+      }
+    };
+
+    const section = document.createElement("section");
+    section.className = "grid-section lab-section";
+
+    const controls = document.createElement("div");
+    controls.className = "all-controls lab-controls";
+
+    // --- sliders, each with a live readout ---
+    const makeSlider = (labelText, key, min, max, step) => {
+      const label = document.createElement("label");
+      label.appendChild(document.createTextNode(labelText));
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = String(min);
+      range.max = String(max);
+      range.step = String(step);
+      range.value = String(prefs[key]);
+      label.appendChild(range);
+      const value = document.createElement("span");
+      value.className = "range-value";
+      value.textContent = `${prefs[key]}px`;
+      label.appendChild(value);
+      range.addEventListener("input", () => {
+        prefs[key] = Number(range.value);
+        value.textContent = `${prefs[key]}px`;
+        savePrefs();
+        apply();
+      });
+      controls.appendChild(label);
+      return range;
+    };
+    makeSlider("cell size", "cell", 40, 400, 5);
+    makeSlider("gap", "gap", 0, 80, 1);
+
+    // --- frames on/off ---
+    const framesLabel = document.createElement("label");
+    const framesBox = document.createElement("input");
+    framesBox.type = "checkbox";
+    framesBox.checked = Boolean(prefs.frames);
+    framesLabel.appendChild(framesBox);
+    framesLabel.appendChild(document.createTextNode(" frames"));
+    controls.appendChild(framesLabel);
+    framesBox.addEventListener("change", () => {
+      prefs.frames = framesBox.checked;
+      savePrefs();
+      apply();
+    });
+
+    // --- background pattern ---
+    const patternLabel = document.createElement("label");
+    patternLabel.appendChild(document.createTextNode("background"));
+    const patternSel = document.createElement("select");
+    for (const [value, text] of LAB_PATTERNS) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      patternSel.appendChild(opt);
+    }
+    patternSel.value = prefs.pattern;
+    patternLabel.appendChild(patternSel);
+    controls.appendChild(patternLabel);
+    patternSel.addEventListener("change", () => {
+      prefs.pattern = patternSel.value;
+      savePrefs();
+      apply();
+    });
+
+    // --- font ---
+    const fontLabel = document.createElement("label");
+    fontLabel.appendChild(document.createTextNode("font"));
+    const fontSel = document.createElement("select");
+    for (const [value, text] of [["serif", "Times"], ["mono", "monospace"]]) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      fontSel.appendChild(opt);
+    }
+    fontSel.value = prefs.font;
+    fontLabel.appendChild(fontSel);
+    controls.appendChild(fontLabel);
+    fontSel.addEventListener("change", () => {
+      prefs.font = fontSel.value;
+      savePrefs();
+      apply();
+    });
+
+    section.appendChild(controls);
+
+    const grid = document.createElement("div");
+    grid.className = "number-grid";
+    for (let i = 1; i <= 100; i++) {
+      grid.appendChild(buildCell(String(i), photosByNumber[i] || [], `#/${i}`));
+    }
+    grid.appendChild(buildCell("misc", miscEntries(), "#/misc"));
+    section.appendChild(grid);
+
+    function apply() {
+      grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${prefs.cell}px, 1fr))`;
+      grid.style.gap = `${prefs.gap}px`;
+      section.classList.toggle("lab-noframes", !prefs.frames);
+      for (const [value] of LAB_PATTERNS) {
+        section.classList.toggle(`lab-bg-${value}`, prefs.pattern === value);
+      }
+      section.style.setProperty(
+        "--number-font",
+        prefs.font === "mono" ? "var(--mono)" : "var(--serif)"
+      );
+      section.style.fontFamily = prefs.font === "mono" ? "var(--mono)" : "var(--serif)";
+    }
+    apply();
 
     app.replaceChildren(section);
     renderProgress();
@@ -1357,6 +1523,250 @@
     return item;
   }
 
+  // ---- "board": the same pictures, but freely draggable ----
+  // Positions are per-browser, keyed by photo, so an arrangement survives a
+  // reload. Anything never dragged simply flows in reading order.
+  const BOARD_KEY = "numbersGallery.boardLayout";
+
+  function loadBoardLayout() {
+    try {
+      return JSON.parse(localStorage.getItem(BOARD_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function renderBoard() {
+    document.title = "numberwang — board";
+    setWordmark("The Game Where We Collect Numbers");
+
+    const prefs = Object.assign({ width: 220, showNumbers: false }, loadAllPrefs());
+    const savePrefs = () => localStorage.setItem(ALL_PREFS_KEY, JSON.stringify(prefs));
+    const layout = loadBoardLayout();
+    const saveLayout = () => {
+      try {
+        localStorage.setItem(BOARD_KEY, JSON.stringify(layout));
+      } catch {
+        /* storage full or blocked — the arrangement just won't persist */
+      }
+    };
+
+    const entries = allEntries();
+
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const controls = document.createElement("div");
+    controls.className = "all-controls";
+
+    const countEl = document.createElement("span");
+    countEl.textContent = `${entries.length} picture${entries.length === 1 ? "" : "s"}`;
+    controls.appendChild(countEl);
+
+    const sizeLabel = document.createElement("label");
+    sizeLabel.appendChild(document.createTextNode("picture size"));
+    const sizeRange = document.createElement("input");
+    sizeRange.type = "range";
+    sizeRange.min = "60";
+    sizeRange.max = "1000";
+    sizeRange.step = "10";
+    sizeRange.value = String(Math.min(prefs.width, 1000));
+    sizeLabel.appendChild(sizeRange);
+    controls.appendChild(sizeLabel);
+
+    const numbersLabel = document.createElement("label");
+    const numbersBox = document.createElement("input");
+    numbersBox.type = "checkbox";
+    numbersBox.checked = Boolean(prefs.showNumbers);
+    numbersLabel.appendChild(numbersBox);
+    numbersLabel.appendChild(document.createTextNode(" show numbers"));
+    controls.appendChild(numbersLabel);
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "board-reset";
+    resetBtn.textContent = "tidy up";
+    controls.appendChild(resetBtn);
+
+    const hint = document.createElement("span");
+    hint.className = "board-hint";
+    hint.textContent = "drag the pictures around";
+    controls.appendChild(hint);
+
+    section.appendChild(controls);
+
+    const canvas = document.createElement("div");
+    canvas.className = "board-canvas";
+    section.appendChild(canvas);
+
+    let topZ = 1;
+    const nodes = new Map(); // key -> element
+
+    // Where a picture sits if it has never been dragged: plain reading order.
+    function flowPosition(index) {
+      const gap = 24;
+      const step = prefs.width + gap;
+      const cols = Math.max(1, Math.floor((canvas.clientWidth || 1000) / step));
+      return {
+        x: (index % cols) * step,
+        y: Math.floor(index / cols) * (prefs.width * 0.9 + gap),
+      };
+    }
+
+    function place(el, pos) {
+      el.style.left = `${Math.round(pos.x)}px`;
+      el.style.top = `${Math.round(pos.y)}px`;
+    }
+
+    // The canvas is absolutely positioned inside, so it has no height of its
+    // own — it has to be told how far its contents reach.
+    function resizeCanvas() {
+      let lowest = 0;
+      for (const el of nodes.values()) {
+        lowest = Math.max(lowest, el.offsetTop + el.offsetHeight);
+      }
+      canvas.style.height = `${lowest + 80}px`;
+    }
+
+    function buildItem(p, index) {
+      const el = document.createElement("div");
+      el.className = "board-item";
+      el.style.width = `${prefs.width}px`;
+
+      const link = document.createElement("a");
+      link.href = imgUrl(p.key);
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.title = plainTooltip(p);
+      link.draggable = false;
+
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = `Picture of ${p.numbers.join(", ")}`;
+      img.src = imgUrl(p.key);
+      img.draggable = false; // otherwise the browser's own image-drag hijacks it
+      link.appendChild(img);
+      el.appendChild(link);
+
+      if (prefs.showNumbers) {
+        const caption = document.createElement("div");
+        caption.className = "gallery-caption";
+        caption.appendChild(numbersCaption(p));
+        el.appendChild(caption);
+      }
+
+      place(el, layout[p.key] || flowPosition(index));
+
+      // --- dragging ---
+      let drag = null;
+      el.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        drag = {
+          id: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          originX: el.offsetLeft,
+          originY: el.offsetTop,
+          moved: 0,
+        };
+        el.setPointerCapture(e.pointerId);
+        el.classList.add("dragging");
+        el.style.zIndex = String(++topZ);
+      });
+
+      el.addEventListener("pointermove", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        drag.moved = Math.max(drag.moved, Math.abs(dx) + Math.abs(dy));
+        // kept inside the canvas so nothing can be dragged out of reach
+        const maxX = Math.max(0, canvas.clientWidth - el.offsetWidth);
+        place(el, {
+          x: Math.min(Math.max(0, drag.originX + dx), maxX),
+          y: Math.max(0, drag.originY + dy),
+        });
+      });
+
+      let suppressClick = false;
+      const finish = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        el.classList.remove("dragging");
+        suppressClick = drag.moved > 3;
+        if (suppressClick) {
+          layout[p.key] = { x: el.offsetLeft, y: el.offsetTop };
+          saveLayout();
+          resizeCanvas();
+        }
+        drag = null;
+      };
+      el.addEventListener("pointerup", finish);
+      el.addEventListener("pointercancel", finish);
+
+      // a drag that happens to end on the picture shouldn't open it as well
+      link.addEventListener("click", (e) => {
+        if (suppressClick) {
+          e.preventDefault();
+          suppressClick = false;
+        }
+      });
+
+      nodes.set(p.key, el);
+      return el;
+    }
+
+    function build() {
+      nodes.clear();
+      canvas.replaceChildren();
+      entries.forEach((p, i) => canvas.appendChild(buildItem(p, i)));
+      // Measure straight away rather than waiting on a frame — a backgrounded
+      // tab may not paint for a long time, and the canvas would sit at its
+      // minimum height until something else nudged it.
+      resizeCanvas();
+      // then again as each picture arrives and gives the item its real height
+      canvas.querySelectorAll("img").forEach((img) => {
+        if (img.complete) return;
+        img.addEventListener("load", resizeCanvas, { once: true });
+        img.addEventListener("error", resizeCanvas, { once: true });
+      });
+    }
+
+    sizeRange.addEventListener("input", () => {
+      prefs.width = Number(sizeRange.value);
+      savePrefs();
+      for (const el of nodes.values()) el.style.width = `${prefs.width}px`;
+      resizeCanvas();
+    });
+
+    numbersBox.addEventListener("change", () => {
+      prefs.showNumbers = numbersBox.checked;
+      savePrefs();
+      build();
+    });
+
+    resetBtn.addEventListener("click", () => {
+      for (const key of Object.keys(layout)) delete layout[key];
+      saveLayout();
+      build();
+    });
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "no-photos";
+      empty.textContent = "No pictures yet.";
+      section.appendChild(empty);
+    }
+
+    app.replaceChildren(section);
+    if (entries.length) build();
+    renderProgress();
+  }
+
   // ---- "all pictures" page: every photo in one masonry wall, sortable ----
   const ALL_PREFS_KEY = "numbersGallery.allPrefs";
 
@@ -1385,6 +1795,7 @@
       numbersToggle = false,
       maxWidth = 480,
       maxGap = 60,
+      hideSizeValue = false,
     } = opts;
 
     if (wide) document.body.classList.add("view-wide");
@@ -1507,7 +1918,7 @@
     }
 
     function showRangeValues() {
-      sizeValue.textContent = `${prefs.width}px`;
+      sizeValue.textContent = hideSizeValue ? "" : `${prefs.width}px`;
       if (gapValue) gapValue.textContent = `${prefs.gap}px`;
     }
     showRangeValues();

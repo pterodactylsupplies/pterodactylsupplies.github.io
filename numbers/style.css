@@ -395,6 +395,102 @@ body.view-grid main { max-width: none; }
   font-size: 18px;
 }
 
+/* ---------- board: freely draggable pictures ---------- */
+
+.board-canvas {
+  position: relative;
+  margin-top: 24px;
+  min-height: 400px;
+}
+
+.board-item {
+  position: absolute;
+  cursor: grab;
+  touch-action: none; /* let the pointer handlers own the gesture */
+  user-select: none;
+  background: var(--cell-bg);
+}
+
+.board-item.dragging {
+  cursor: grabbing;
+  outline: 1px solid var(--red);
+}
+
+.board-item a { display: block; }
+
+.board-item img {
+  display: block;
+  width: 100%;
+  pointer-events: none; /* the wrapper handles the drag */
+}
+
+.board-reset {
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.board-reset:hover { background: var(--hover-bg); }
+
+.board-hint { color: var(--ink-2); }
+
+/* an empty readout shouldn't reserve space next to its slider */
+.range-value:empty { min-width: 0; }
+
+/* ---------- grid lab ---------- */
+
+.lab-controls { margin-bottom: 16px; }
+
+/* frames off: keep the box, drop the line, so nothing shifts */
+.lab-noframes .cell { border-color: transparent; }
+
+/* Opaque so the body's own dot pattern doesn't show through and muddle
+   whatever is being previewed here — "none" should mean none. */
+.lab-section {
+  background-color: var(--bg);
+  background-repeat: repeat;
+  min-height: 100vh;
+}
+
+.lab-bg-none { background-image: none; }
+
+.lab-bg-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.18) 1.5px, transparent 1.5px);
+  background-size: 40px 40px;
+}
+
+.lab-bg-fine-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.22) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.lab-bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Small plus marks. Drawn as an SVG tile rather than gradients: a linear
+   gradient is uniform along its perpendicular axis, so it can only ever
+   produce full-height stripes, not short dashes. */
+.lab-bg-cross {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M16 12.5v7M12.5 16h7' stroke='rgba(0,0,0,0.3)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 32px 32px;
+}
+
+.lab-bg-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.10) 0 1px,
+    transparent 1px 12px
+  );
+}
+
 /* ---------- "people" page ---------- */
 
 /* wide tables scroll inside their own box rather than the whole page */
