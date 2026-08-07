@@ -597,6 +597,10 @@
     document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all");
     // full-bleed is opt-in per page; cleared here so it can't leak between views
     document.body.classList.remove("view-wide");
+    // the grid lab dresses the whole page — undo that when leaving it
+    for (const cls of [...document.body.classList]) {
+      if (cls.startsWith("lab-")) document.body.classList.remove(cls);
+    }
     document.body.classList.add(`view-${view}`);
   }
 
@@ -914,7 +918,15 @@
       stored = {};
     }
     const prefs = Object.assign(
-      { cell: 90, gap: 12, frames: true, pattern: "dots", font: "serif" },
+      {
+        cell: 90,
+        gap: 12,
+        frames: true,
+        frameWidth: 1,
+        frameStyle: "solid",
+        pattern: "dots",
+        font: "serif",
+      },
       stored
     );
     const savePrefs = () => {
@@ -972,6 +984,38 @@
       apply();
     });
 
+    makeSlider("frame width", "frameWidth", 0, 12, 1);
+
+    // --- frame style ---
+    // "double" needs at least 3px to resolve into two lines, and groove and
+    // ridge need a few px before they read as anything at all.
+    const frameLabel = document.createElement("label");
+    frameLabel.appendChild(document.createTextNode("frame style"));
+    const frameSel = document.createElement("select");
+    for (const [value, text] of [
+      ["solid", "solid"],
+      ["double", "double line"],
+      ["dashed", "dashed"],
+      ["dotted", "dotted"],
+      ["groove", "groove"],
+      ["ridge", "ridge"],
+      ["inset", "inset"],
+      ["outset", "outset"],
+    ]) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      frameSel.appendChild(opt);
+    }
+    frameSel.value = prefs.frameStyle;
+    frameLabel.appendChild(frameSel);
+    controls.appendChild(frameLabel);
+    frameSel.addEventListener("change", () => {
+      prefs.frameStyle = frameSel.value;
+      savePrefs();
+      apply();
+    });
+
     // --- background pattern ---
     const patternLabel = document.createElement("label");
     patternLabel.appendChild(document.createTextNode("background"));
@@ -1023,15 +1067,18 @@
     function apply() {
       grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${prefs.cell}px, 1fr))`;
       grid.style.gap = `${prefs.gap}px`;
+
       section.classList.toggle("lab-noframes", !prefs.frames);
+      section.style.setProperty("--lab-frame-width", `${prefs.frameWidth}px`);
+      section.style.setProperty("--lab-frame-style", prefs.frameStyle);
+
+      // Background and font dress the whole page, not just the grid — so
+      // they go on <body>, and setView strips them when you navigate away.
       for (const [value] of LAB_PATTERNS) {
-        section.classList.toggle(`lab-bg-${value}`, prefs.pattern === value);
+        document.body.classList.toggle(`lab-bg-${value}`, prefs.pattern === value);
       }
-      section.style.setProperty(
-        "--number-font",
-        prefs.font === "mono" ? "var(--mono)" : "var(--serif)"
-      );
-      section.style.fontFamily = prefs.font === "mono" ? "var(--mono)" : "var(--serif)";
+      document.body.classList.toggle("lab-font-mono", prefs.font === "mono");
+      document.body.classList.toggle("lab-font-serif", prefs.font === "serif");
     }
     apply();
 
