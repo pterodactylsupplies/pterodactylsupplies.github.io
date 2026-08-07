@@ -898,10 +898,17 @@
   // A place to try cell sizes, gutters, frames, background patterns and
   // fonts without touching the real grid. Choices are remembered.
   const GRID_LAB_KEY = "numbersGallery.gridLab";
+  const NATIVE_FRAME_STYLES = [
+    "solid", "double", "dashed", "dotted", "groove", "ridge", "inset", "outset",
+  ];
+  const TWO_TONE_FRAME_STYLES = [
+    "outset-bw", "inset-bw", "groove-bw", "ridge-bw",
+    "outset-grey", "inset-grey", "groove-grey", "ridge-grey",
+  ];
   const LAB_PATTERNS = [
-    ["dots", "dots"],
-    ["none", "none"],
     ["fine-dots", "fine dots"],
+    ["none", "none"],
+    ["dots", "large dots"],
     ["grid", "graph paper"],
     ["cross", "crosses"],
     ["diagonal", "diagonal lines"],
@@ -918,13 +925,14 @@
       stored = {};
     }
     const prefs = Object.assign(
+      // defaults mirror the live site, so the lab opens on what you'd see
       {
         cell: 90,
-        gap: 12,
+        gap: 50,
         frames: true,
         frameWidth: 1,
         frameStyle: "solid",
-        pattern: "dots",
+        pattern: "fine-dots",
         font: "serif",
       },
       stored
@@ -984,11 +992,16 @@
       apply();
     });
 
-    makeSlider("frame width", "frameWidth", 0, 12, 1);
+    makeSlider("frame width", "frameWidth", 0, 400, 1);
 
     // --- frame style ---
     // "double" needs at least 3px to resolve into two lines, and groove and
     // ridge need a few px before they read as anything at all.
+    //
+    // The plain groove/ridge/inset/outset take their two tones from whatever
+    // the browser derives off one colour, which lands on muddy greys. The
+    // -bw and -grey entries set every side explicitly instead, so the pairing
+    // is exactly black-and-white or black-and-grey.
     const frameLabel = document.createElement("label");
     frameLabel.appendChild(document.createTextNode("frame style"));
     const frameSel = document.createElement("select");
@@ -1001,6 +1014,14 @@
       ["ridge", "ridge"],
       ["inset", "inset"],
       ["outset", "outset"],
+      ["outset-bw", "outset — black/white"],
+      ["inset-bw", "inset — black/white"],
+      ["groove-bw", "groove — black/white"],
+      ["ridge-bw", "ridge — black/white"],
+      ["outset-grey", "outset — black/grey"],
+      ["inset-grey", "inset — black/grey"],
+      ["groove-grey", "groove — black/grey"],
+      ["ridge-grey", "ridge — black/grey"],
     ]) {
       const opt = document.createElement("option");
       opt.value = value;
@@ -1070,7 +1091,14 @@
 
       section.classList.toggle("lab-noframes", !prefs.frames);
       section.style.setProperty("--lab-frame-width", `${prefs.frameWidth}px`);
-      section.style.setProperty("--lab-frame-style", prefs.frameStyle);
+      // Native border-styles go straight through as a value; the two-tone
+      // ones aren't real CSS keywords, so they ride on a class instead and
+      // fall back to solid for the underlying border.
+      const isNative = NATIVE_FRAME_STYLES.includes(prefs.frameStyle);
+      section.style.setProperty("--lab-frame-style", isNative ? prefs.frameStyle : "solid");
+      for (const value of TWO_TONE_FRAME_STYLES) {
+        section.classList.toggle(`lab-frame-${value}`, prefs.frameStyle === value);
+      }
 
       // Background and font dress the whole page, not just the grid — so
       // they go on <body>, and setView strips them when you navigate away.

@@ -28,8 +28,9 @@ body.view-detail, body.view-misc, body.view-all { --number-font: var(--mono); }
 body {
   margin: 0;
   background-color: var(--bg);
-  background-image: radial-gradient(rgba(0, 0, 0, 0.18) 1.5px, transparent 1.5px);
-  background-size: 40px 40px;
+  /* fine dots — the site-wide texture */
+  background-image: radial-gradient(rgba(0, 0, 0, 0.22) 1px, transparent 1px);
+  background-size: 16px 16px;
   color: var(--ink);
   font-family: var(--serif);
   font-size: 16px;
@@ -148,7 +149,7 @@ body.view-grid main { max-width: none; }
 .number-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 12px;
+  gap: 50px;
 }
 
 .cell {
@@ -453,7 +454,54 @@ body.view-grid main { max-width: none; }
   border-style: var(--lab-frame-style, solid);
 }
 
-.lab-noframes .cell { border-color: transparent; }
+.lab-noframes .cell { border-color: transparent; box-shadow: none; }
+
+/* --- two-tone frames ---
+   border-color takes four sides in order top/right/bottom/left, which gives
+   an exact bevel instead of the muddy shades a browser derives on its own.
+   Groove and ridge are two bevels facing opposite ways: the border draws the
+   outer band, and a pair of offset inset shadows draws the inner one — an
+   inset shadow pushed down-right paints along the top and left edges, and
+   the reverse paints along the bottom and right. */
+.lab-section.lab-frame-outset-bw .cell { border-color: #fff #000 #000 #fff; }
+.lab-section.lab-frame-inset-bw  .cell { border-color: #000 #fff #fff #000; }
+.lab-section.lab-frame-outset-grey .cell { border-color: #8a8a8a #000 #000 #8a8a8a; }
+.lab-section.lab-frame-inset-grey  .cell { border-color: #000 #8a8a8a #8a8a8a #000; }
+
+.lab-section.lab-frame-groove-bw .cell,
+.lab-section.lab-frame-ridge-bw .cell,
+.lab-section.lab-frame-groove-grey .cell,
+.lab-section.lab-frame-ridge-grey .cell {
+  border-width: calc(var(--lab-frame-width, 1px) / 2);
+}
+
+.lab-section.lab-frame-groove-bw .cell {
+  border-color: #000 #fff #fff #000;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #fff,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #000;
+}
+
+.lab-section.lab-frame-ridge-bw .cell {
+  border-color: #fff #000 #000 #fff;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #000,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #fff;
+}
+
+.lab-section.lab-frame-groove-grey .cell {
+  border-color: #000 #8a8a8a #8a8a8a #000;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #8a8a8a,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #000;
+}
+
+.lab-section.lab-frame-ridge-grey .cell {
+  border-color: #8a8a8a #000 #000 #8a8a8a;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #000,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #8a8a8a;
+}
 
 /* --- page backgrounds --- these sit on <body>, so they dress the whole
    page rather than the grid alone, and they have to outrank the site's
