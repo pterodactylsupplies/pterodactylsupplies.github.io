@@ -260,6 +260,130 @@
     return null;
   }
 
+  // ---- HEIC ----
+  // HEIC keeps EXIF as an item inside the ISO-BMFF "meta" box: "iinf" names
+  // the items, "iloc" says where each one's bytes live. Walk both to find the
+  // Exif item. iPhones shoot HEIC by default, so without this every iPhone
+  // photo arrives with no location at all.
+
+  function findBox(view, start, end, type) {
+    let offset = start;
+    while (offset + 8 <= end) {
+      let size = view.getUint32(offset);
+      const boxType = String.fromCharCode(
+        view.getUint8(offset + 4), view.getUint8(offset + 5),
+        view.getUint8(offset + 6), view.getUint8(offset + 7)
+      );
+      let headerSize = 8;
+      if (size === 1) {
+        // 64-bit length; anything needing the high word isn't a photo
+        if (offset + 16 > end || view.getUint32(offset + 8) !== 0) return null;
+        size = view.getUint32(offset + 12);
+        headerSize = 16;
+      } else if (size === 0) {
+        size = end - offset; // runs to the end of the file
+      }
+      if (size < headerSize) return null; // malformed — don't loop forever
+      if (boxType === type) {
+        return { dataStart: offset + headerSize, end: Math.min(offset + size, end) };
+      }
+      offset += size;
+    }
+    return null;
+  }
+
+  function findExifItemId(view, box) {
+    const version = view.getUint8(box.dataStart);
+    let offset = box.dataStart + 4; // past version/flags
+    let count;
+    if (version === 0) { count = view.getUint16(offset); offset += 2; }
+    else { count = view.getUint32(offset); offset += 4; }
+
+    for (let i = 0; i < count && offset + 12 <= box.end; i++) {
+      const size = view.getUint32(offset);
+      if (size < 8) return null;
+      const infeVersion = view.getUint8(offset + 8);
+      if (infeVersion >= 2) {
+        const idSize = infeVersion === 2 ? 2 : 4;
+        const idAt = offset + 12;
+        const typeAt = idAt + idSize + 2; // past item_protection_index
+        if (typeAt + 4 <= box.end) {
+          const itemType = String.fromCharCode(
+            view.getUint8(typeAt), view.getUint8(typeAt + 1),
+            view.getUint8(typeAt + 2), view.getUint8(typeAt + 3)
+          );
+          if (itemType === "Exif") {
+            return idSize === 2 ? view.getUint16(idAt) : view.getUint32(idAt);
+          }
+        }
+      }
+      offset += size;
+    }
+    return null;
+  }
+
+  function findItemExtent(view, box, itemId) {
+    const version = view.getUint8(box.dataStart);
+    let offset = box.dataStart + 4;
+    const sizeByte = view.getUint8(offset);
+    const offsetSize = sizeByte >> 4;
+    const lengthSize = sizeByte & 0x0f;
+    const nextByte = view.getUint8(offset + 1);
+    const baseOffsetSize = nextByte >> 4;
+    const indexSize = version >= 1 ? (nextByte & 0x0f) : 0;
+    offset += 2;
+
+    let itemCount;
+    if (version < 2) { itemCount = view.getUint16(offset); offset += 2; }
+    else { itemCount = view.getUint32(offset); offset += 4; }
+
+    const readN = (at, n) => {
+      if (n === 0) return 0;
+      if (n === 2) return view.getUint16(at);
+      if (n === 4) return view.getUint32(at);
+      if (n === 8) return view.getUint32(at) !== 0 ? NaN : view.getUint32(at + 4);
+      return NaN;
+    };
+
+    for (let i = 0; i < itemCount && offset < box.end; i++) {
+      let id;
+      if (version < 2) { id = view.getUint16(offset); offset += 2; }
+      else { id = view.getUint32(offset); offset += 4; }
+      if (version >= 1) offset += 2; // construction_method
+      offset += 2; // data_reference_index
+      const baseOffset = readN(offset, baseOffsetSize);
+      offset += baseOffsetSize;
+      const extentCount = view.getUint16(offset);
+      offset += 2;
+      for (let e = 0; e < extentCount; e++) {
+        offset += indexSize;
+        const extentOffset = readN(offset, offsetSize);
+        offset += offsetSize;
+        const extentLength = readN(offset, lengthSize);
+        offset += lengthSize;
+        if (id === itemId && e === 0) {
+          const at = baseOffset + extentOffset;
+          if (!Number.isFinite(at) || !Number.isFinite(extentLength)) return null;
+          return { offset: at, length: extentLength };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findHeicExifExtent(view) {
+    const meta = findBox(view, 0, view.byteLength, "meta");
+    if (!meta) return null;
+    // meta is a FullBox — 4 bytes of version/flags before its children
+    const start = meta.dataStart + 4;
+    const iinf = findBox(view, start, meta.end, "iinf");
+    const iloc = findBox(view, start, meta.end, "iloc");
+    if (!iinf || !iloc) return null;
+    const itemId = findExifItemId(view, iinf);
+    if (itemId == null) return null;
+    return findItemExtent(view, iloc, itemId);
+  }
+
   async function readExif(file) {
     let view;
     try {
@@ -271,12 +395,45 @@
     if (view.byteLength < 12) return { reason: "unreadable" };
 
     const kind = sniffImageKind(view);
-    if (kind === "heic") return { reason: "heic" };
+
+    if (kind === "heic" || kind === "bmff") {
+      let extent;
+      try {
+        extent = findHeicExifExtent(view);
+      } catch {
+        return { reason: "unreadable" }; // truncated or unusual box layout
+      }
+      if (!extent) return { reason: "no-exif" };
+
+      let block = view;
+      let at = extent.offset;
+      if (at + Math.min(extent.length, 16) > view.byteLength) {
+        // the Exif item sits past our opening window — read just that range
+        try {
+          const buf = await file.slice(at, at + extent.length).arrayBuffer();
+          block = new DataView(buf);
+          at = 0;
+        } catch {
+          return { reason: "unreadable" };
+        }
+      }
+      // the item's payload starts with a 4-byte offset to the TIFF header
+      if (at + 4 > block.byteLength) return { reason: "no-exif" };
+      const tiffStart = at + 4 + block.getUint32(at);
+      if (tiffStart + 8 > block.byteLength) return { reason: "no-exif" };
+      return parseTiffExif(block, tiffStart);
+    }
+
     if (kind !== "jpeg") return { reason: "no-exif" }; // PNG/WebP carry none
 
     const exifOffset = findExifOffset(view);
     if (exifOffset == null || exifOffset + 8 > view.byteLength) return { reason: "no-exif" };
+    return parseTiffExif(view, exifOffset);
+  }
 
+  // The TIFF block that both JPEG's APP1 segment and HEIC's Exif item wrap.
+  // `exifOffset` points at the byte-order mark ("II" or "MM").
+  function parseTiffExif(view, exifOffset) {
     try {
       const little = view.getUint16(exifOffset) === 0x4949;
       const get16 = (o) => view.getUint16(o, little);
@@ -407,18 +564,34 @@
     return parts.join(", ");
   }
 
-  async function reverseGeocode(lat, lon) {
+  // Returns {label} on success, or {error} naming the stage that failed, so
+  // the form can say "the lookup broke" instead of implying the photo had no
+  // location. Nominatim allows one request a second per IP — and phones share
+  // an IP behind carrier NAT — so a throttle here is not unusual.
+  async function reverseGeocodeOnce(lat, lon) {
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${lat}&lon=${lon}&zoom=10`,
         { headers: { Accept: "application/json" } }
       );
-      if (!res.ok) return "";
+      if (res.status === 429 || res.status === 403) return { error: "busy" };
+      if (!res.ok) return { error: "failed" };
       const data = await res.json();
-      return placeLabel(data.address || {});
+      const label = placeLabel(data.address || {});
+      return label ? { label } : { error: "unnamed" };
     } catch {
-      return "";
+      return { error: "offline" };
     }
+  }
+
+  async function reverseGeocode(lat, lon) {
+    const first = await reverseGeocodeOnce(lat, lon);
+    if (first.label || first.error === "unnamed") return first;
+    // One retry, paced past Nominatim's one-per-second limit. Worth it: the
+    // coordinates are good, and a throttle or a dropped request on a phone is
+    // exactly the transient case that used to read as "no location".
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    return reverseGeocodeOnce(lat, lon);
   }
 
   function wireLocationAutocomplete(input, datalist) {
@@ -478,17 +651,33 @@
   // Phones commonly hand over photos with the location already stripped —
   // by the camera's own settings, or by the photo picker on the way out.
   // Naming the likely cause beats a blank field the person can't explain.
-  function locationHint(exif) {
-    if (exif.reason === "heic") {
-      return "couldn't read this photo's data — type the place in";
+  // Says which stage failed rather than four ways of saying "no location".
+  // The distinction that matters: "this photo has none" is the person's to
+  // fix, "the lookup broke" is ours — and they used to read identically.
+  function locationHint(exif, geo) {
+    if (geo) {
+      // coordinates were read fine; the place-name lookup is what failed
+      if (geo.error === "busy") {
+        return "the place lookup is rate-limited right now — type it in";
+      }
+      if (geo.error === "offline") {
+        return "couldn't reach the place lookup — type it in";
+      }
+      if (geo.error === "unnamed") {
+        return "this photo's coordinates have no place name — type it in";
+      }
+      return "read the coordinates, but the place lookup failed — type it in";
     }
-    if (exif.lat == null && exif.reason === "no-gps") {
-      return "this photo has no location saved — type it in";
+    if (exif.reason === "no-gps") {
+      return "this photo has no location saved in it — type it in";
     }
-    if (exif.reason === "no-exif" || exif.reason === "unreadable") {
-      return "this photo carries no location — type it in";
+    if (exif.reason === "no-exif") {
+      return "this photo carries no location data — type it in";
     }
-    return "couldn't find a location — type it in"; // had GPS, geocoding failed
+    if (exif.reason === "unreadable") {
+      return "couldn't read this photo's data — type it in";
+    }
+    return "couldn't find a location — type it in";
   }
 
   async function applyExifMetadata(container, file) {
@@ -520,13 +709,15 @@
       // submission — must not survive into a new photo's slot.
       locInput.value = "";
       locInput.placeholder = "";
+      let geo = null;
       if (exif.lat != null && exif.lon != null) {
         locInput.value = "looking up…";
-        locInput.value = (await reverseGeocode(exif.lat, exif.lon)) || "";
+        geo = await reverseGeocode(exif.lat, exif.lon);
+        locInput.value = geo.label || "";
       }
       if (!locInput.value) {
         autoUncheck(locCheckbox);
-        locInput.placeholder = locationHint(exif);
+        locInput.placeholder = locationHint(exif, geo);
       }
     }
 
@@ -2489,7 +2680,11 @@
 
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/jpeg,image/png,image/webp";
+    // HEIC is listed so iPhones hand over the original rather than Safari's
+    // auto-converted JPEG — the original still carries its GPS. shrinkImage
+    // re-encodes everything to JPEG before upload, so nothing HEIC-shaped
+    // reaches the bucket (no other browser could display it).
+    input.accept = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
     if (multiple) input.multiple = true;
     zone.appendChild(input);
 
@@ -2556,7 +2751,7 @@
 
     const helper = document.createElement("p");
     helper.className = "upload-helper";
-    helper.textContent = "JPEG, PNG or WebP · published immediately";
+    helper.textContent = "JPEG, PNG, WebP or HEIC · published immediately";
     panel.appendChild(helper);
     panel.appendChild(fileStatus);
 
@@ -2612,7 +2807,9 @@
   // tagged with (at least one). Returns true if at least one upload
   // succeeded. On success, reloads data and re-renders.
   async function submitPhotos(fileList, numbers, meta, status) {
-    const files = [...fileList].filter((f) => f.type.startsWith("image/"));
+    // Photo pickers often report an empty type for HEIC, so fall back to the
+    // extension rather than silently dropping the file.
+    const files = [...fileList].filter((f) => f.type.startsWith("image/") || looksHeic(f));
     if (!files.length) {
       setStatus(status, "err", "That doesn't look like an image.");
       return false;
@@ -2646,6 +2843,15 @@
       setStatus(status, "", `Uploading ${done + 1} of ${files.length}…`);
       try {
         const blob = await shrinkImage(file);
+        // shrinkImage hands the original back when it couldn't decode it. For
+        // HEIC that means this browser has no decoder (Chrome, Firefox, Edge
+        // — only Safari does), and uploading it raw would store a picture
+        // almost nobody could see. Say so plainly instead.
+        if (blob === file && looksHeic(file)) {
+          throw new Error(
+            "this browser can't read HEIC photos — open the site in Safari, or set the camera to \"Most Compatible\""
+          );
+        }
         const form = new FormData();
         form.append("numbers", numbers.join(","));
         form.append("photo", blob, "photo.jpg");
@@ -2699,6 +2905,10 @@
   // Downscale to max 1600px on the long edge and re-encode as JPEG,
   // so phone photos don't eat storage. Falls back to the original file
   // if the browser can't decode it on a canvas.
+  function looksHeic(file) {
+    return /^image\/hei[cf]$/i.test(file.type || "") || /\.hei[cf]$/i.test(file.name || "");
+  }
+
   async function shrinkImage(file) {
     const MAX = 1600;
     try {
