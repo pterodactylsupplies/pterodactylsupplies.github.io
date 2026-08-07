@@ -588,7 +588,47 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 
 .people-table td.num { white-space: nowrap; }
 
+/* free text (places, comments) — capped so one long note can't stretch the
+   table past the point where the other columns stay readable */
+.people-table td.wrap {
+  white-space: normal;
+  max-width: 320px;
+  min-width: 160px;
+}
+
 .people-table tbody tr:hover { background: var(--hover-bg); }
+
+/* the page is admin-only, so it opens on a lock instead of the table */
+.people-lock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.people-lock input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  min-width: 240px;
+}
+
+.people-lock-err {
+  width: 100%;
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.people-lock-link {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: normal;
+  font-family: var(--mono);
+}
 
 /* ---------- Upload panel (inline, per-number / misc) ---------- */
 

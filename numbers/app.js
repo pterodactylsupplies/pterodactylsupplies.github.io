@@ -661,7 +661,9 @@
       setView("all");
       renderPeople();
     } else if (location.hash === "#/misc") {
+      // misc is a number page in all but name, so it runs full window too
       setView("misc");
+      document.body.classList.add("view-wide");
       renderMisc();
     } else {
       // Number pages run full window by default. "#/42/narrow" keeps the old
@@ -1398,12 +1400,16 @@
           photos: [],
           numbers: new Set(),
           locations: new Set(),
+          favorites: new Set(),
+          comments: [],
         };
         people.set(key, person);
       }
       person.names.add(name);
       if (p.contact) person.contacts.add(p.contact);
       if (p.location) person.locations.add(p.location);
+      if (p.favoriteNumber) person.favorites.add(p.favoriteNumber.trim());
+      if (p.comments) person.comments.push(p.comments.trim());
       p.numbers.forEach((n) => person.numbers.add(n));
       person.photos.push(p);
     }
@@ -1424,18 +1430,107 @@
       .sort((a, b) => b.count - a.count || [...a.names][0].localeCompare([...b.names][0]));
   }
 
+  // Shared with admin.html, so unlocking either page unlocks the other.
+  const ADMIN_TOKEN_KEY = "numbersAdmin.token";
+
+  // Checked against the worker rather than locally, so a wrong password is
+  // actually refused. This gates the page, not the data: /api/photos is
+  // public, so it stops casual browsing, not a determined reader.
+  async function adminTokenValid(token) {
+    if (!token) return false;
+    try {
+      const res = await fetch(`${API}/api/verify-admin`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   function renderPeople() {
     document.title = "numberwang — people";
     setWordmark("The Game Where We Collect Numbers");
 
+    const pending = document.createElement("p");
+    pending.className = "loading";
+    pending.textContent = "Checking…";
+    app.replaceChildren(pending);
+    renderProgress();
+
+    adminTokenValid(sessionStorage.getItem(ADMIN_TOKEN_KEY) || "").then((ok) => {
+      // the check is async — don't stomp a view they've navigated to since
+      if (location.hash !== "#/people") return;
+      if (ok) renderPeopleTable();
+      else renderPeopleLock();
+    });
+  }
+
+  function peopleSection() {
     const section = document.createElement("section");
     section.className = "detail-section";
-
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
     back.textContent = "← back to grid";
     section.appendChild(back);
+    return section;
+  }
+
+  function renderPeopleLock() {
+    const section = peopleSection();
+
+    const heading = document.createElement("h2");
+    heading.className = "terms-heading";
+    heading.textContent = "people";
+    section.appendChild(heading);
+
+    const form = document.createElement("form");
+    form.className = "people-lock";
+
+    const input = document.createElement("input");
+    input.type = "password";
+    input.placeholder = "admin token";
+    input.autocomplete = "off";
+    form.appendChild(input);
+
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.textContent = "unlock";
+    form.appendChild(button);
+
+    const err = document.createElement("p");
+    err.className = "people-lock-err";
+    form.appendChild(err);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (!value) {
+        err.textContent = "Enter the admin token.";
+        return;
+      }
+      button.disabled = true;
+      err.textContent = "checking…";
+      const ok = await adminTokenValid(value);
+      button.disabled = false;
+      if (!ok) {
+        err.textContent = "That token isn't right.";
+        input.select();
+        return;
+      }
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, value);
+      if (location.hash === "#/people") renderPeopleTable();
+    });
+
+    section.appendChild(form);
+    app.replaceChildren(section);
+    renderProgress();
+    input.focus();
+  }
+
+  function renderPeopleTable() {
+    const section = peopleSection();
 
     const people = groupPeople();
     const totalPhotos = people.reduce((sum, person) => sum + person.count, 0);
@@ -1443,6 +1538,16 @@
     const heading = document.createElement("h2");
     heading.className = "terms-heading";
     heading.textContent = `${people.length} ${people.length === 1 ? "person" : "people"}, ${totalPhotos} pictures`;
+    const lockLink = document.createElement("a");
+    lockLink.className = "people-lock-link";
+    lockLink.href = "#/people";
+    lockLink.textContent = "[lock]";
+    lockLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+      renderPeopleLock();
+    });
+    heading.appendChild(lockLink);
     section.appendChild(heading);
 
     if (!people.length) {
@@ -1460,7 +1565,18 @@
 
     const head = document.createElement("thead");
     const headRow = document.createElement("tr");
-    ["person", "method no.", "contact", "pictures", "numbers", "first", "latest"].forEach((label) => {
+    [
+      "person",
+      "method no.",
+      "favorite no.",
+      "contact",
+      "pictures",
+      "numbers",
+      "places",
+      "first",
+      "latest",
+      "comments",
+    ].forEach((label) => {
       const th = document.createElement("th");
       th.textContent = label;
       headRow.appendChild(th);
@@ -1481,6 +1597,12 @@
       methodCell.className = "num";
       methodCell.textContent = person.method || "—";
       tr.appendChild(methodCell);
+
+      // free text, so it can hold "2^5" as readily as "32"
+      const favoriteCell = document.createElement("td");
+      favoriteCell.className = "num";
+      favoriteCell.textContent = [...person.favorites].join(", ") || "—";
+      tr.appendChild(favoriteCell);
 
       const contactCell = document.createElement("td");
       const contacts = [...person.contacts];
@@ -1515,6 +1637,11 @@
         });
       tr.appendChild(numbersCell);
 
+      const placesCell = document.createElement("td");
+      placesCell.className = "wrap";
+      placesCell.textContent = [...person.locations].join(" · ") || "—";
+      tr.appendChild(placesCell);
+
       const firstCell = document.createElement("td");
       firstCell.textContent = person.first ? new Date(person.first).toLocaleDateString() : "—";
       tr.appendChild(firstCell);
@@ -1522,6 +1649,11 @@
       const lastCell = document.createElement("td");
       lastCell.textContent = person.last ? new Date(person.last).toLocaleDateString() : "—";
       tr.appendChild(lastCell);
+
+      const commentsCell = document.createElement("td");
+      commentsCell.className = "wrap";
+      commentsCell.textContent = person.comments.join(" · ") || "—";
+      tr.appendChild(commentsCell);
 
       tbody.appendChild(tr);
     }
