@@ -2138,6 +2138,28 @@
   }
 
   // ---- shared form fields (used by both the inline upload panel and the modal) ----
+
+  // Number fields take digits only. Filtering as the person types — rather
+  // than rejecting on submit — means a stray letter simply never appears, so
+  // there is no error to explain. List fields also allow commas and spaces.
+  function restrictToDigits(input, { list = false } = {}) {
+    const banned = list ? /[^0-9,\s]/g : /[^0-9]/g;
+    // A numeric keypad would be nicer on mobile, but iOS's numeric pad has no
+    // comma key — so only single-value fields get one.
+    if (!list) input.inputMode = "numeric";
+    input.addEventListener("input", () => {
+      const before = input.value;
+      const cleaned = before.replace(banned, "");
+      if (cleaned === before) return;
+      // Keep the caret where they were typing instead of flinging it to the
+      // end: count how many characters survived ahead of the old position.
+      const caret = input.selectionStart ?? before.length;
+      const kept = before.slice(0, caret).replace(banned, "").length;
+      input.value = cleaned;
+      input.setSelectionRange(kept, kept);
+    });
+  }
+
   function buildTextField(labelText, inputClass, mandatory) {
     const wrap = document.createElement("label");
     wrap.className = "field-label";
@@ -2245,7 +2267,9 @@
   function buildAlsoShowsField() {
     const block = document.createElement("div");
     block.className = "meta-field-block";
-    block.appendChild(buildTextField("also shows numbers", "f-also-numbers"));
+    const alsoField = buildTextField("also shows numbers", "f-also-numbers");
+    restrictToDigits(alsoField.querySelector("input"), { list: true });
+    block.appendChild(alsoField);
     const hint = document.createElement("p");
     hint.className = "upload-helper";
     hint.textContent = "shows more than one number? separate with commas";
@@ -2265,6 +2289,8 @@
     contactHint.textContent = "contact is shown publicly, linked where possible";
     container.appendChild(contactHint);
 
+    // Deliberately unfiltered: a favorite number can be "2^5" and a method
+    // number can be a joke. Only the fields that feed the grid are digits-only.
     container.appendChild(
       buildPairRow(
         buildTextField("favorite number", "f-favorite-number"),
@@ -2604,6 +2630,9 @@
     const numberInput = document.createElement("input");
     numberInput.type = "text";
     numberInput.id = "modal-number";
+    // Registered here, before the listeners further down, so they only ever
+    // see an already-filtered value.
+    restrictToDigits(numberInput, { list: true });
     numberField.appendChild(numberInput);
     dialog.appendChild(numberField);
 

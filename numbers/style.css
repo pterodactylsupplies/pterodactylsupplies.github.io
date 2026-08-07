@@ -149,7 +149,7 @@ body.view-grid main { max-width: none; }
 .number-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 50px;
+  gap: 12px;
 }
 
 .cell {
