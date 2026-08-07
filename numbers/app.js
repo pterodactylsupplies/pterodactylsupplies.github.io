@@ -2267,8 +2267,8 @@
 
     container.appendChild(
       buildPairRow(
-        buildTextField("your method number", "f-their-number"),
-        buildTextField("favorite number", "f-favorite-number")
+        buildTextField("favorite number", "f-favorite-number"),
+        buildTextField("your method number", "f-their-number")
       )
     );
     container.appendChild(buildLocationField());
