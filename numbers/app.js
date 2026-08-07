@@ -610,25 +610,32 @@
       setView("terms");
       renderTerms();
     } else if (location.hash === "#/all") {
-      // the main wall: full window, numbers under each picture, gutter at 36
+      // the main wall: full window, pictures up to 1000px, gutter on its own
+      // slider, numbers hidden until asked for
       setView("all");
-      renderAll("numbers", true, false, 36);
+      renderAll({
+        wide: true,
+        gapControl: true,
+        numbersToggle: true,
+        maxWidth: 1000,
+        maxGap: 300,
+      });
     } else if (location.hash === "#/all-old") {
       // the original capped wall with full details, kept for reference
       setView("all");
       renderAll();
     } else if (location.hash === "#/all-plain") {
       setView("all");
-      renderAll("plain");
+      renderAll({ mode: "plain" });
     } else if (location.hash === "#/all-numbers") {
       setView("all");
-      renderAll("numbers");
+      renderAll({ mode: "numbers" });
     } else if (location.hash === "#/all-numbers-wide") {
       setView("all");
-      renderAll("numbers", true);
+      renderAll({ mode: "numbers", wide: true });
     } else if (location.hash === "#/all-numbers-wide-gap") {
       setView("all");
-      renderAll("numbers", true, true);
+      renderAll({ mode: "numbers", wide: true, gapControl: true });
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -1361,21 +1368,39 @@
     }
   }
 
-  // mode: "full" | "plain" | "numbers"; wide drops the page's usual
-  // max-width so the wall runs the whole window, like the grid page does;
-  // gapControl swaps the automatic gutter for a slider of its own; fixedGap
-  // pins it to one value with no control at all.
-  function renderAll(mode = "full", wide = false, gapControl = false, fixedGap = null) {
-    const plain = mode !== "full";
+  // Options:
+  //   mode          "full" (details under each picture) | "plain" (nothing)
+  //                 | "numbers" (number links only)
+  //   wide          drop the page's max-width, like the grid page
+  //   gapControl    give the gutter its own slider instead of auto-scaling
+  //   fixedGap      pin the gutter to one value, with no control at all
+  //   numbersToggle offer a checkbox for showing the numbers under pictures
+  //   maxWidth/maxGap  upper ends of the two sliders
+  function renderAll(opts = {}) {
+    const {
+      mode = "full",
+      wide = false,
+      gapControl = false,
+      fixedGap = null,
+      numbersToggle = false,
+      maxWidth = 480,
+      maxGap = 60,
+    } = opts;
+
     if (wide) document.body.classList.add("view-wide");
     document.title =
       mode === "full" ? "numberwang — all pictures" : "numberwang — pictures only";
     setWordmark("The Game Where We Collect Numbers");
     const mine = loadMyUploads();
     const prefs = Object.assign(
-      { sort: "added", dir: "desc", width: 220, gap: 12 },
+      { sort: "added", dir: "desc", width: 220, gap: 36, showNumbers: false },
       loadAllPrefs()
     );
+    // With the checkbox in play the captions follow it; otherwise the page's
+    // own mode decides.
+    const effectiveMode = () =>
+      numbersToggle ? (prefs.showNumbers ? "numbers" : "plain") : mode;
+    const plain = () => effectiveMode() !== "full";
     const savePrefs = () => localStorage.setItem(ALL_PREFS_KEY, JSON.stringify(prefs));
 
     const section = document.createElement("section");
@@ -1438,8 +1463,10 @@
     // down to thumbnail size, in finer steps than before so the small end
     // is actually controllable rather than jumping in big increments
     sizeRange.min = "60";
-    sizeRange.max = "480";
+    sizeRange.max = String(maxWidth);
     sizeRange.step = "10";
+    // a stored size from a page with a lower ceiling shouldn't sit off-scale
+    prefs.width = Math.min(prefs.width, maxWidth);
     sizeRange.value = String(prefs.width);
     sizeLabel.appendChild(sizeRange);
     const sizeValue = document.createElement("span");
@@ -1457,14 +1484,26 @@
       gapRange = document.createElement("input");
       gapRange.type = "range";
       gapRange.min = "0";
-      gapRange.max = "60";
+      gapRange.max = String(maxGap);
       gapRange.step = "1";
+      prefs.gap = Math.min(prefs.gap, maxGap);
       gapRange.value = String(prefs.gap);
       gapLabel.appendChild(gapRange);
       gapValue = document.createElement("span");
       gapValue.className = "range-value";
       gapLabel.appendChild(gapValue);
       controls.appendChild(gapLabel);
+    }
+
+    let numbersBox = null;
+    if (numbersToggle) {
+      const numbersLabel = document.createElement("label");
+      numbersBox = document.createElement("input");
+      numbersBox.type = "checkbox";
+      numbersBox.checked = Boolean(prefs.showNumbers);
+      numbersLabel.appendChild(numbersBox);
+      numbersLabel.appendChild(document.createTextNode(" show numbers"));
+      controls.appendChild(numbersLabel);
     }
 
     function showRangeValues() {
@@ -1490,21 +1529,27 @@
     let items = [];
     let currentCols = 0;
 
+    // n columns occupy n*width + (n-1)*gap, so the gutters have to come out
+    // of the sum — ignoring them overshoots the count and squeezes the
+    // pictures well below the requested size, badly so at wide gutters.
     function colCount() {
-      return Math.max(1, Math.floor((gallery.clientWidth || 0) / prefs.width) || 1);
+      const available = gallery.clientWidth || 0;
+      const gap = currentGap();
+      return Math.max(1, Math.floor((available + gap) / (prefs.width + gap)) || 1);
     }
 
     // With a gutter slider the value is taken literally and stays put as the
     // pictures resize. Without one, gutters shrink with the pictures — a
     // fixed 24px looks like a chasm between 60px thumbnails — but never grow
     // past the original spacing.
+    function currentGap() {
+      if (fixedGap != null) return fixedGap;
+      if (gapControl) return prefs.gap;
+      return Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
+    }
+
     function applyGap() {
-      const gap =
-        fixedGap != null
-          ? fixedGap
-          : gapControl
-            ? prefs.gap
-            : Math.min(24, Math.max(6, Math.round(prefs.width / 9)));
+      const gap = currentGap();
       gallery.style.gap = `${gap}px`;
       gallery.style.setProperty("--wall-gap", `${gap}px`);
     }
@@ -1534,12 +1579,21 @@
         if (kb == null) return -1;
         return prefs.dir === "asc" ? ka - kb : kb - ka;
       });
+      const current = effectiveMode();
       items = sorted.map((p, i) =>
-        plain
-          ? buildPlainItem(p, mode === "numbers")
+        plain()
+          ? buildPlainItem(p, current === "numbers")
           : buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
       );
       layout();
+    }
+
+    if (numbersBox) {
+      numbersBox.addEventListener("change", () => {
+        prefs.showNumbers = numbersBox.checked;
+        savePrefs();
+        rebuild();
+      });
     }
 
     sortSel.addEventListener("change", () => {
