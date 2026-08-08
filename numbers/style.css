@@ -598,6 +598,28 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 
 .people-table tbody tr:hover { background: var(--hover-bg); }
 
+/* ---------- "exif check" diagnostic page ---------- */
+
+.exif-check-input {
+  font: inherit;
+  margin: 12px 0;
+  max-width: 100%;
+}
+
+.exif-check-out {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  padding: 12px;
+  margin-top: 12px;
+  min-height: 24px;
+}
+
+.exif-check-out:empty { display: none; }
+
 /* the page is admin-only, so it opens on a lock instead of the table */
 .people-lock {
   display: flex;

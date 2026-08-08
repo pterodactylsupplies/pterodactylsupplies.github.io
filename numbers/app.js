@@ -848,6 +848,9 @@
     } else if (location.hash === "#/grid-lab") {
       setView("grid");
       renderGridLab();
+    } else if (location.hash === "#/exif-check") {
+      setView("terms");
+      renderExifCheck();
     } else if (location.hash === "#/people") {
       setView("all");
       renderPeople();
@@ -1619,6 +1622,233 @@
         };
       })
       .sort((a, b) => b.count - a.count || [...a.names][0].localeCompare([...b.names][0]));
+  }
+
+  // ---- #/exif-check: unlisted page that dumps what a photo actually
+  // contains. Reads only; nothing is uploaded. Exists because "no location
+  // in this photo" has several causes that look identical from outside, and
+  // guessing between them from a description has not worked.
+
+  function listJpegSegments(view) {
+    const found = [];
+    let offset = 2;
+    while (offset + 4 <= view.byteLength) {
+      const marker = view.getUint16(offset);
+      if ((marker & 0xff00) !== 0xff00) break;
+      if (marker === 0xffd9 || marker === 0xffda) { found.push("SOS/EOI"); break; }
+      const size = view.getUint16(offset + 2);
+      if (size < 2) break;
+      const low = marker & 0xff;
+      found.push(low >= 0xe0 && low <= 0xef ? `APP${low - 0xe0}(${size}b)` : `FF${low.toString(16)}`);
+      offset += 2 + size;
+    }
+    return found;
+  }
+
+  function describeTiff(view, start) {
+    const out = {};
+    try {
+      const little = view.getUint16(start) === 0x4949;
+      out["byte order"] = little ? "little-endian (II)" : "big-endian (MM)";
+      const get16 = (o) => view.getUint16(o, little);
+      const get32 = (o) => view.getUint32(o, little);
+      const readIFD = (at) => {
+        const entries = {};
+        const count = get16(at);
+        for (let i = 0; i < count; i++) {
+          const eo = at + 2 + i * 12;
+          entries[get16(eo)] = { type: get16(eo + 2), num: get32(eo + 4), valueOffset: eo + 8 };
+        }
+        return entries;
+      };
+      const rational = (o) => {
+        const n = get32(o), d = get32(o + 4);
+        return d ? `${n}/${d}` : `${n}/0`;
+      };
+      const readStr = (e) => {
+        const at = e.num <= 4 ? e.valueOffset : start + get32(e.valueOffset);
+        let s = "";
+        for (let i = 0; i < e.num - 1; i++) s += String.fromCharCode(view.getUint8(at + i));
+        return s.replace(/\0/g, "").trim();
+      };
+
+      const ifd0 = readIFD(start + get32(start + 4));
+      const tags = Object.keys(ifd0).map(Number);
+      out["IFD0 tags"] = `${tags.length} — ${tags.map((t) => "0x" + t.toString(16)).join(" ")}`;
+      if (ifd0[0x010f]) out["camera make"] = readStr(ifd0[0x010f]);
+      if (ifd0[0x0110]) out["camera model"] = readStr(ifd0[0x0110]);
+      if (ifd0[0x0132]) out["date/time"] = readStr(ifd0[0x0132]);
+
+      // The decisive line: is the GPS pointer there at all?
+      out["GPS pointer (0x8825)"] = ifd0[0x8825] ? "PRESENT" : "ABSENT";
+      if (ifd0[0x8825]) {
+        const gps = readIFD(start + get32(ifd0[0x8825].valueOffset));
+        const gpsTags = Object.keys(gps).map(Number);
+        out["GPS tags"] = `${gpsTags.length} — ${gpsTags.join(" ")}`;
+        const rats = (e) => {
+          const at = start + get32(e.valueOffset);
+          const o = [];
+          for (let i = 0; i < e.num; i++) o.push(rational(at + i * 8));
+          return o.join("  ");
+        };
+        out["GPSLatitudeRef (1)"] = gps[1] ? `"${readStr(gps[1])}"` : "MISSING";
+        out["GPSLatitude (2)"] = gps[2] ? rats(gps[2]) : "MISSING";
+        out["GPSLongitudeRef (3)"] = gps[3] ? `"${readStr(gps[3])}"` : "MISSING";
+        out["GPSLongitude (4)"] = gps[4] ? rats(gps[4]) : "MISSING";
+      }
+    } catch (err) {
+      out["parse error"] = String(err && err.message);
+    }
+    return out;
+  }
+
+  async function diagnoseExif(file) {
+    const out = {
+      "file name": file.name || "(none)",
+      "reported type": file.type || "(empty)",
+      "size": `${file.size} bytes (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
+    };
+
+    let view;
+    try {
+      view = new DataView(await file.slice(0, EXIF_SCAN_BYTES).arrayBuffer());
+    } catch (err) {
+      out["read error"] = String(err && err.message);
+      return out;
+    }
+    out["bytes examined"] = view.byteLength;
+
+    const kind = sniffImageKind(view);
+    out["sniffed format"] = kind;
+
+    let block = view;
+    let tiffStart = null;
+    if (kind === "jpeg") {
+      out["JPEG segments"] = listJpegSegments(view).join(" ") || "(none)";
+      tiffStart = findExifOffset(view);
+    } else if (kind === "heic" || kind === "bmff") {
+      let extent = null;
+      try {
+        extent = findHeicExifExtent(view);
+      } catch (err) {
+        out["HEIC walk error"] = String(err && err.message);
+      }
+      out["HEIC Exif item"] = extent
+        ? `offset ${extent.offset}, ${extent.length} bytes`
+        : "not found";
+      if (extent) {
+        let at = extent.offset;
+        if (at + Math.min(extent.length, 16) > view.byteLength) {
+          try {
+            block = new DataView(await file.slice(at, at + extent.length).arrayBuffer());
+            at = 0;
+            out["Exif item"] = "read separately (past the 2 MB window)";
+          } catch (err) {
+            out["Exif item read error"] = String(err && err.message);
+            return out;
+          }
+        }
+        tiffStart = at + 4 + block.getUint32(at);
+      }
+    }
+
+    if (tiffStart == null) {
+      out["EXIF block"] = "NOT FOUND";
+    } else {
+      out["EXIF block"] = `found at byte ${tiffStart}`;
+      Object.assign(out, describeTiff(block, tiffStart));
+    }
+
+    const parsed = await readExif(file);
+    out["--- what the form does with it ---"] = "";
+    out["latitude"] = parsed.lat == null ? "(none)" : String(parsed.lat);
+    out["longitude"] = parsed.lon == null ? "(none)" : String(parsed.lon);
+    out["taken at"] = parsed.takenAt || "(none)";
+    out["verdict"] = parsed.reason || "usable location found";
+    return out;
+  }
+
+  function renderExifCheck() {
+    document.title = "numberwang — exif check";
+    setWordmark("The Game Where We Collect Numbers");
+
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const heading = document.createElement("h2");
+    heading.className = "terms-heading";
+    heading.textContent = "what's actually in this photo";
+    section.appendChild(heading);
+
+    const blurb = document.createElement("p");
+    blurb.textContent =
+      "Pick a photo to see what data it carries. Nothing is uploaded or saved — " +
+      "the file is read in your browser and thrown away.";
+    section.appendChild(blurb);
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.className = "exif-check-input";
+    // deliberately unfiltered: whichever picker this opens is part of what
+    // we're testing, and the answer may differ between them
+    section.appendChild(input);
+
+    const actions = document.createElement("p");
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "mast-cta";
+    copyBtn.textContent = "copy result";
+    copyBtn.hidden = true;
+    actions.appendChild(copyBtn);
+    section.appendChild(actions);
+
+    const out = document.createElement("pre");
+    out.className = "exif-check-out";
+    section.appendChild(out);
+
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      out.textContent = "reading…";
+      copyBtn.hidden = true;
+      let report;
+      try {
+        report = await diagnoseExif(file);
+      } catch (err) {
+        out.textContent = `failed: ${err && err.message}`;
+        return;
+      }
+      const width = Math.max(...Object.keys(report).map((k) => k.length));
+      out.textContent = Object.entries(report)
+        .map(([k, v]) => (v === "" ? k : `${k.padEnd(width)}  ${v}`))
+        .join("\n");
+      copyBtn.hidden = false;
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(out.textContent);
+        copyBtn.textContent = "copied";
+        setTimeout(() => { copyBtn.textContent = "copy result"; }, 1500);
+      } catch {
+        // clipboard blocked — select it instead so a long-press can copy
+        const range = document.createRange();
+        range.selectNodeContents(out);
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        copyBtn.textContent = "selected — long-press to copy";
+      }
+    });
+
+    app.replaceChildren(section);
+    renderProgress();
   }
 
   // Shared with admin.html, so unlocking either page unlocks the other.
