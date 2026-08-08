@@ -476,6 +476,10 @@
       }
 
       if (ifd0[0x8825]) {
+        // The photo was written with a GPS block. If we still can't get
+        // coordinates out of it, the values were emptied after the fact —
+        // which is a different story from a photo that never had any.
+        result.gpsBlockPresent = true;
         const gpsIfd = readIFD(exifOffset + get32(ifd0[0x8825].valueOffset));
         if (gpsIfd[1] && gpsIfd[2] && gpsIfd[3] && gpsIfd[4]) {
           const latRef = readString(gpsIfd[1]).toUpperCase();
@@ -498,7 +502,9 @@
           }
         }
       }
-      if (result.lat == null) result.reason = "no-gps";
+      if (result.lat == null) {
+        result.reason = result.gpsBlockPresent ? "gps-blanked" : "no-gps";
+      }
       return result;
     } catch {
       return { reason: "unreadable" }; // malformed EXIF — just skip it
@@ -668,6 +674,14 @@
       }
       return "read the coordinates, but the place lookup failed — type it in";
     }
+    // The photo was taken with a location; the copy the browser was handed
+    // has it emptied out. Android blanks the GPS values in place when it
+    // serves a photo to an app without full media access, so the file looks
+    // untouched — same size, every other tag intact. Saying "no location"
+    // here would be a false statement about the person's own photo.
+    if (exif.reason === "gps-blanked") {
+      return "your phone hid this photo's location from the browser — type it in";
+    }
     if (exif.reason === "no-gps") {
       return "this photo has no location saved in it — type it in";
     }
@@ -718,6 +732,17 @@
       if (!locInput.value) {
         autoUncheck(locCheckbox);
         locInput.placeholder = locationHint(exif, geo);
+      }
+
+      const note = container.querySelector(".location-note");
+      if (note) {
+        const blanked = !locInput.value && !geo && exif.reason === "gps-blanked";
+        note.hidden = !blanked;
+        note.textContent = blanked
+          ? "The photo does have a location — your phone removed it from the copy it gave " +
+            "the browser. To keep it: allow this browser full access to photos (not " +
+            "\"selected photos\"), or add the picture from a Files app instead of Gallery."
+          : "";
       }
     }
 
@@ -2776,6 +2801,13 @@
 
     const { wrap, checkbox } = buildCheckboxRow("use photo's location", "f-location-metadata");
     block.appendChild(wrap);
+
+    // Only filled in when the phone blanked the coordinates — that case has
+    // a fix the contributor can actually apply, unlike the others.
+    const note = document.createElement("p");
+    note.className = "upload-helper location-note";
+    note.hidden = true;
+    block.appendChild(note);
 
     input.disabled = true;
     checkbox.addEventListener("change", () => {
