@@ -2684,7 +2684,17 @@
     // auto-converted JPEG — the original still carries its GPS. shrinkImage
     // re-encodes everything to JPEG before upload, so nothing HEIC-shaped
     // reaches the bucket (no other browser could display it).
-    input.accept = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
+    const IMAGE_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
+
+    // Chrome on Android sends a media-only `accept` through the system photo
+    // picker, and that picker hands back a copy with the GPS tags removed —
+    // which is why phone uploads stopped carrying a location while the same
+    // file read fine on a desktop. Leaving `accept` open puts the ordinary
+    // file chooser back, which reads the file as it is stored.
+    //
+    // Only Android: on iOS the media list is what makes the picker open
+    // straight into the photo library, and on desktop it usefully filters.
+    input.accept = /Android/i.test(navigator.userAgent) ? "" : IMAGE_TYPES;
     if (multiple) input.multiple = true;
     zone.appendChild(input);
 
