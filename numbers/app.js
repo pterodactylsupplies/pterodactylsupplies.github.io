@@ -733,17 +733,6 @@
         autoUncheck(locCheckbox);
         locInput.placeholder = locationHint(exif, geo);
       }
-
-      const note = container.querySelector(".location-note");
-      if (note) {
-        const blanked = !locInput.value && !geo && exif.reason === "gps-blanked";
-        note.hidden = !blanked;
-        note.textContent = blanked
-          ? "The photo does have a location — your phone removed it from the copy it gave " +
-            "the browser. To keep it: allow this browser full access to photos (not " +
-            "\"selected photos\"), or add the picture from a Files app instead of Gallery."
-          : "";
-      }
     }
 
     const whenCheckbox = container.querySelector(".f-found-at-metadata");
@@ -2801,13 +2790,6 @@
 
     const { wrap, checkbox } = buildCheckboxRow("use photo's location", "f-location-metadata");
     block.appendChild(wrap);
-
-    // Only filled in when the phone blanked the coordinates — that case has
-    // a fix the contributor can actually apply, unlike the others.
-    const note = document.createElement("p");
-    note.className = "upload-helper location-note";
-    note.hidden = true;
-    block.appendChild(note);
 
     input.disabled = true;
     checkbox.addEventListener("change", () => {
