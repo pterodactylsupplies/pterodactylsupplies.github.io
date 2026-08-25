@@ -10,5 +10,5 @@
 // else. Falls back to API_BASE when unset.
 window.CONFIG = {
   API_BASE: "https://numbers-gallery-api.greendegrass.workers.dev",
-  SHARE_BASE: "https://numbers-gallery-api.greendegrass.workers.dev",
+  SHARE_BASE: "https://numbers.pterodactyl.supplies",
 };
