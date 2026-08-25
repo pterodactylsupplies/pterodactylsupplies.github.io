@@ -470,6 +470,46 @@ body.view-photo .mast { display: none; }
   object-fit: contain;
 }
 
+/* Neighbours flank the picture rather than sitting above it, so the
+   photograph is the first thing on the page. */
+.photo-frame {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.photo-frame img {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.photo-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  /* an arrow glyph on its own is a few pixels wide — this is what makes it
+     a target a thumb can actually hit */
+  min-height: 44px;
+  min-width: 28px;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.photo-step:hover { background: var(--hover-bg); text-decoration: none; }
+
+.photo-step-arrow { font-size: 18px; }
+
+/* On a narrow screen the names would eat the picture; the arrows alone
+   still read, and the name stays in the link's title. */
+@media (max-width: 700px) {
+  .photo-frame { gap: 8px; }
+  .photo-step-name { display: none; }
+}
+
 .share-row {
   margin-top: 12px;
   display: flex;

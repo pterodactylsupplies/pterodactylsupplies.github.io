@@ -1745,7 +1745,12 @@
     back.className = "back-link";
     back.href = "#";
     back.textContent = "← back to grid";
-    section.appendChild(back);
+
+    const topRow = document.createElement("div");
+    topRow.className = "page-top-row";
+    topRow.appendChild(back);
+    topRow.appendChild(buildThemeToggle());
+    section.appendChild(topRow);
 
     const navRow = document.createElement("div");
     navRow.className = "detail-nav-row";
@@ -1936,49 +1941,46 @@
     back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
     section.appendChild(back);
 
-    // Neighbours run through the whole collection, not just this number, so
-    // the end of 42 leads into 43 rather than looping. It wraps at the very
-    // ends, like the number pages do.
-    const homeNumber = photo.numbers[0];
-    const withinNumber = (photosByNumber[homeNumber] || []);
-    const place = withinNumber.findIndex((p) => p.key === photo.key);
-    const run = orderedPhotos();
-    const at = run.findIndex((p) => p.key === photo.key);
-    if (run.length > 1 && at !== -1) {
-      const prev = run[(at - 1 + run.length) % run.length];
-      const next = run[(at + 1) % run.length];
-      const navRow = document.createElement("div");
-      navRow.className = "detail-nav-row";
-
-      const prevLink = document.createElement("a");
-      prevLink.href = photoHref(prev);
-      prevLink.textContent = `← ${photoId(prev)}`;
-
-      const centre = document.createElement("div");
-      centre.className = "detail-center";
-      const num = document.createElement("div");
-      num.className = "detail-number";
-      num.textContent = photoId(photo);
-      const meta = document.createElement("div");
-      meta.className = "detail-meta";
-      meta.textContent = `${place + 1} of ${withinNumber.length} on ${homeNumber}`;
-      centre.append(num, meta);
-
-      const nextLink = document.createElement("a");
-      nextLink.href = photoHref(next);
-      nextLink.textContent = `${photoId(next)} →`;
-
-      navRow.append(prevLink, centre, nextLink);
-      section.appendChild(navRow);
-    }
-
     const item = document.createElement("div");
     item.className = "gallery-item";
 
     const img = document.createElement("img");
     img.src = imgUrl(photo.key);
     img.alt = `Picture of ${photo.numbers.join(", ")}`;
-    item.appendChild(img);
+
+    // Neighbours sit either side of the picture, so nothing stands between
+    // the top of the page and the photograph. They run through the whole
+    // collection rather than one number, so the end of 42 leads into 43-1,
+    // and wrap at the very ends.
+    const run = orderedPhotos();
+    const at = run.findIndex((p) => p.key === photo.key);
+    const frame = document.createElement("div");
+    frame.className = "photo-frame";
+
+    if (run.length > 1 && at !== -1) {
+      const step = (target, direction) => {
+        const a = document.createElement("a");
+        a.className = `photo-step photo-step-${direction}`;
+        a.href = photoHref(target);
+        a.title = `${direction === "prev" ? "Previous" : "Next"} picture: ${photoId(target)}`;
+        const arrow = document.createElement("span");
+        arrow.className = "photo-step-arrow";
+        arrow.textContent = direction === "prev" ? "←" : "→";
+        const name = document.createElement("span");
+        name.className = "photo-step-name";
+        name.textContent = photoId(target);
+        a.append(...(direction === "prev" ? [arrow, name] : [name, arrow]));
+        return a;
+      };
+      frame.append(
+        step(run[(at - 1 + run.length) % run.length], "prev"),
+        img,
+        step(run[(at + 1) % run.length], "next"),
+      );
+    } else {
+      frame.appendChild(img);
+    }
+    item.appendChild(frame);
 
     const caption = document.createElement("div");
     caption.className = "gallery-caption";
