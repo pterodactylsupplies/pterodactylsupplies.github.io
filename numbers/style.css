@@ -528,11 +528,24 @@ body.view-photo .mast::after {
 
 .photo-step-arrow { font-size: 18px; }
 
-/* On a narrow screen the names would eat the picture; the arrows alone
-   still read, and the name stays in the link's title. */
+/* The masthead copy, hidden until the screen is narrow enough to want it */
+.photo-steps { display: none; }
+
+/* On a narrow screen the arrows leave the picture's sides — every pixel of
+   width belongs to the photograph — and move into the masthead below it,
+   where there's room for their names. The back link goes too: the masthead's
+   wordmark and these arrows are enough to get anywhere from here. */
 @media (max-width: 700px) {
-  .photo-frame { gap: 8px; }
-  .photo-step-name { display: none; }
+  .photo-frame .photo-step { display: none; }
+  body.view-photo .back-link { display: none; }
+
+  .photo-steps {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+  }
 }
 
 .share-row {

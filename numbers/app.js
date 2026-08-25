@@ -838,6 +838,10 @@
 
   function setView(view) {
     document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all", "view-photo");
+    // On a narrow screen the picture page parks its neighbour links in the
+    // masthead, which outlives #app — so clear any left behind by the page
+    // we're leaving.
+    document.querySelectorAll(".mast .photo-steps").forEach((el) => el.remove());
     // full-bleed is opt-in per page; cleared here so it can't leak between views
     document.body.classList.remove("view-wide");
     // the grid lab dresses the whole page — undo that when leaving it
@@ -1972,11 +1976,19 @@
         a.append(...(direction === "prev" ? [arrow, name] : [name, arrow]));
         return a;
       };
-      frame.append(
-        step(run[(at - 1 + run.length) % run.length], "prev"),
-        img,
-        step(run[(at + 1) % run.length], "next"),
-      );
+      const prev = run[(at - 1 + run.length) % run.length];
+      const next = run[(at + 1) % run.length];
+      frame.append(step(prev, "prev"), img, step(next, "next"));
+
+      // A second pair, in the masthead, for narrow screens — where arrows
+      // beside the picture would be taking width the photograph needs. Only
+      // ever one pair is displayed; the other is display:none, so it's out of
+      // the accessibility tree rather than read twice.
+      const bar = document.createElement("div");
+      bar.className = "photo-steps";
+      bar.append(step(prev, "prev"), step(next, "next"));
+      const mast = document.querySelector(".mast");
+      if (mast) mast.appendChild(bar);
     } else {
       frame.appendChild(img);
     }
