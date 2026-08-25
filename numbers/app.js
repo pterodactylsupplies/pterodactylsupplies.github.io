@@ -784,12 +784,17 @@
     return null;
   }
 
+  // 404 has no cell on the grid and isn't swept into misc: it has its own
+  // page, which doubles as the site's not-found page.
+  const NOT_FOUND_NUMBER = 404;
+
   function miscEntries() {
     const seen = new Set();
     const entries = [];
     for (const [k, list] of Object.entries(photosByNumber)) {
       const n = parseInt(k, 10);
       if (n >= 1 && n <= 100) continue;
+      if (n === NOT_FOUND_NUMBER) continue;
       for (const p of list) {
         if (seen.has(p.key)) continue; // dedupe if tagged with >1 out-of-range number
         seen.add(p.key);
@@ -833,7 +838,7 @@
     if (location.hash === "#/terms") {
       setView("terms");
       renderTerms();
-    } else if (location.hash === "#/all") {
+    } else if (location.hash === "#/all" || location.hash === "#/all-share") {
       // the main wall: full window, pictures up to 1000px, gutter fixed wide,
       // numbers hidden until asked for
       setView("all");
@@ -843,18 +848,6 @@
         maxWidth: 1000,
         fixedGap: 150,
         hideSizeValue: true,
-      });
-    } else if (location.hash === "#/all-share") {
-      // the same wall, on trial: a picture opens its own page instead of the
-      // raw file. Unlisted while we live with it.
-      setView("all");
-      renderAll({
-        wide: true,
-        numbersToggle: true,
-        maxWidth: 1000,
-        fixedGap: 150,
-        hideSizeValue: true,
-        linkToPage: true,
       });
     } else if (location.hash === "#/all-develop") {
       // the same wall with both sliders exposed, kept to experiment on
@@ -905,21 +898,30 @@
       setView("photo");
       document.body.classList.add("view-wide");
       renderPhoto(location.hash.slice("#/p/".length));
+    } else if (location.hash === `#/${NOT_FOUND_NUMBER}`) {
+      setView("misc");
+      document.body.classList.add("view-wide");
+      renderNotFound();
     } else {
       // Number pages run full window by default. "#/42/narrow" keeps the old
-      // capped layout; "#/42/wide" still works, since links to it exist.
-      // "#/42/share" is the trial twin of "#/42", where a picture opens its
-      // own page rather than the raw file.
+      // capped layout; "#/42/wide" and "#/42/share" still work, since links
+      // to both exist.
       const suffixed = location.hash.match(/^#\/(\d{1,3})\/(wide|narrow|share)$/);
       const n = suffixed ? Number(suffixed[1]) : currentNumber();
       if (n && n >= 1 && n <= 100) {
         const narrow = suffixed ? suffixed[2] === "narrow" : false;
         setView("detail");
         if (!narrow) document.body.classList.add("view-wide");
-        renderDetail(n, narrow, { linkToPage: suffixed ? suffixed[2] === "share" : false });
-      } else {
+        renderDetail(n, narrow);
+      } else if (location.hash === "" || location.hash === "#" || location.hash === "#/") {
         setView("grid");
         renderGrid();
+      } else if (/^#\/-?\d+$/.test(location.hash)) {
+        // a real number, just not one with its own cell — misc collects those
+        location.replace(`${location.pathname}#/misc`);
+      } else {
+        // anything else was never a page here
+        location.replace(`${location.pathname}#/${NOT_FOUND_NUMBER}`);
       }
     }
     window.scrollTo(0, 0);
@@ -1434,17 +1436,12 @@
     return a;
   }
 
-  // Where a picture goes when clicked. The long-standing answer is the raw
-  // file in a new tab; `linkToPage` sends it to the picture's own page
-  // instead, and is opt-in per page while that's on trial.
-  function photoLink(link, p, opts = {}) {
-    if (opts.linkToPage) {
-      link.href = photoHref(p);
-      return;
-    }
-    link.href = imgUrl(p.key);
-    link.target = "_blank";
-    link.rel = "noopener";
+  // Where a picture goes when clicked: its own page, everywhere. This used
+  // to open the raw file in a new tab, which left a picture with nothing
+  // around it and no way back to the gallery. The file is still one click
+  // further on, from "open the file" on the picture's page.
+  function photoLink(link, p) {
+    link.href = photoHref(p);
   }
 
   function buildGalleryItem(p, i, total, currentN, mine, opts = {}) {
@@ -1452,7 +1449,7 @@
     item.className = "gallery-item";
 
     const link = document.createElement("a");
-    photoLink(link, p, opts);
+    photoLink(link, p);
     const img = document.createElement("img");
     img.loading = "lazy";
     img.alt = currentN != null ? `Picture of the number ${currentN}` : `Picture marked ${p.numbers.join(", ")}`;
@@ -1536,11 +1533,10 @@
     return item;
   }
 
-  function renderDetail(n, narrow = false, opts = {}) {
-    // prev/next keep whichever width — or trial — you're browsing in; wide is
-    // the plain "#/42" form now, so only the other variants need a suffix
-    const numberHref = (x) =>
-      narrow ? `#/${x}/narrow` : opts.linkToPage ? `#/${x}/share` : `#/${x}`;
+  function renderDetail(n, narrow = false) {
+    // prev/next keep whichever width you're browsing in; wide is the plain
+    // "#/42" form now, so only the narrow variant needs a suffix
+    const numberHref = (x) => (narrow ? `#/${x}/narrow` : `#/${x}`);
     document.title = `numberwang (${n})`;
     setWordmark(`Give or Take ${n}`);
     const photos = photosByNumber[n] || [];
@@ -1577,9 +1573,7 @@
       const gallery = document.createElement("div");
       gallery.id = "detail-gallery";
       photos.forEach((p, i) =>
-        gallery.appendChild(buildGalleryItem(p, i, photos.length, n, mine, {
-          linkToPage: opts.linkToPage,
-        })));
+        gallery.appendChild(buildGalleryItem(p, i, photos.length, n, mine)));
       section.appendChild(gallery);
     } else {
       const empty = document.createElement("div");
@@ -1715,6 +1709,55 @@
   }
 
   applyTheme(activeTheme());
+
+  // ---- 404 (#/404) ----
+  // A number page like any other, except nothing links to it from the grid,
+  // and the site's 404.html sends every unknown address here. The pictures
+  // people have tagged 404 are the page's own illustration.
+  function renderNotFound() {
+    document.title = "numberwang (404)";
+    setWordmark("Give or Take 404");
+    const entries = photosByNumber[NOT_FOUND_NUMBER] || [];
+    const mine = loadMyUploads();
+
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = "#";
+    back.textContent = "← back to grid";
+    section.appendChild(back);
+
+    const navRow = document.createElement("div");
+    navRow.className = "detail-nav-row";
+    navRow.innerHTML = `
+      <span></span>
+      <div class="detail-center">
+        <div class="detail-eyebrow">page not found</div>
+        <div class="detail-number">404</div>
+        <div class="detail-meta">${entries.length} picture${entries.length === 1 ? "" : "s"} on file</div>
+      </div>
+      <span></span>`;
+    section.appendChild(navRow);
+
+    if (entries.length) {
+      const gallery = document.createElement("div");
+      gallery.id = "misc-gallery";
+      entries.forEach((p, i) => gallery.appendChild(buildGalleryItem(p, i, entries.length, null, mine)));
+      section.appendChild(gallery);
+    }
+
+    const note = document.createElement("p");
+    note.className = "gallery-meta";
+    note.style.textAlign = "center";
+    note.style.marginTop = "24px";
+    note.textContent = "Whatever you were looking for isn't here. The numbers are.";
+    section.appendChild(note);
+
+    app.replaceChildren(section);
+    renderProgress();
+  }
 
   // ---- one picture's own page (#/p/<id>) ----
   // Everything the gallery knows about a single photo, in one place, with the
@@ -1875,6 +1918,40 @@
     back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
     section.appendChild(back);
 
+    // Neighbours are the other pictures of the same number, in the order they
+    // were published — the same run you'd be walking on that number's page.
+    // It wraps, like the number pages do.
+    const homeNumber = onGrid.length ? onGrid[0] : photo.numbers[0];
+    const siblings = (photosByNumber[homeNumber] || []).filter((p) => p.slug || p.key);
+    const at = siblings.findIndex((p) => p.key === photo.key);
+    if (siblings.length > 1 && at !== -1) {
+      const prev = siblings[(at - 1 + siblings.length) % siblings.length];
+      const next = siblings[(at + 1) % siblings.length];
+      const navRow = document.createElement("div");
+      navRow.className = "detail-nav-row";
+
+      const prevLink = document.createElement("a");
+      prevLink.href = photoHref(prev);
+      prevLink.textContent = `← ${photoId(prev)}`;
+
+      const centre = document.createElement("div");
+      centre.className = "detail-center";
+      const num = document.createElement("div");
+      num.className = "detail-number";
+      num.textContent = photoId(photo);
+      const meta = document.createElement("div");
+      meta.className = "detail-meta";
+      meta.textContent = `${at + 1} of ${siblings.length} on ${homeNumber}`;
+      centre.append(num, meta);
+
+      const nextLink = document.createElement("a");
+      nextLink.href = photoHref(next);
+      nextLink.textContent = `${photoId(next)} →`;
+
+      navRow.append(prevLink, centre, nextLink);
+      section.appendChild(navRow);
+    }
+
     const item = document.createElement("div");
     item.className = "gallery-item";
 
@@ -1898,7 +1975,6 @@
       meta.appendChild(contactNode(contact));
     }
     const bits = [];
-    if (photo.favoriteNumber) bits.push(`favorite number ${photo.favoriteNumber}`);
     if (photo.location) bits.push(photo.location);
     if (photo.foundAt) bits.push(`found ${formatFoundAt(photo.foundAt)}`);
     bits.push(`published ${relativeTime(photo.uploaded)}`);
@@ -2483,12 +2559,12 @@
   // A picture with nothing written under it — the details live in the
   // tooltip instead. With `withNumbers`, the numbers alone appear below the
   // picture as links, and nothing else.
-  function buildPlainItem(p, withNumbers = false, opts = {}) {
+  function buildPlainItem(p, withNumbers = false) {
     const item = document.createElement("div");
     item.className = "gallery-item gallery-item-plain";
 
     const link = document.createElement("a");
-    photoLink(link, p, opts);
+    photoLink(link, p);
     link.title = plainTooltip(p);
 
     const img = document.createElement("img");
@@ -2627,9 +2703,7 @@
       el.style.width = `${prefs.width}px`;
 
       const link = document.createElement("a");
-      link.href = imgUrl(p.key);
-      link.target = "_blank";
-      link.rel = "noopener";
+      photoLink(link, p);
       link.title = plainTooltip(p);
       link.draggable = false;
 
@@ -2980,11 +3054,8 @@
       const current = effectiveMode();
       items = sorted.map((p, i) =>
         plain()
-          ? buildPlainItem(p, current === "numbers", { linkToPage: opts.linkToPage })
-          : buildGalleryItem(p, i, sorted.length, null, mine, {
-              caption: numbersCaption(p),
-              linkToPage: opts.linkToPage,
-            })
+          ? buildPlainItem(p, current === "numbers")
+          : buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
       );
       layout();
     }
