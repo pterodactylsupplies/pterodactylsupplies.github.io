@@ -23,16 +23,20 @@
    a matter of restating them — nothing below this block knows which mode it
    is in. Applied by data-theme on <html>; with no choice remembered the
    media query follows the system. */
+/* Nothing here is white: at full strength on black the frames glare and the
+   text buzzes. Type sits at a light grey, the rules and cell frames at a
+   darker one, so the structure recedes behind the pictures the way black
+   lines do on paper. */
 :root[data-theme="dark"] {
-  --ink:      #ffffff;
-  --ink-2:    #999999;
+  --ink:      #cfcfcf;
+  --ink-2:    #8a8a8a;
   --red:      #ff4b4b;
   --link:     #8ab4ff;
-  --border:   #ffffff;
+  --border:   #5e5e5e;
   --bg:       #000000;
   --cell-bg:  #000000;
-  --hover-bg: #262626;
-  --dot:      rgba(255, 255, 255, 0.22);
+  --hover-bg: #232323;
+  --dot:      rgba(255, 255, 255, 0.16);
 }
 
 /* the grid page ships full-bleed (no max-width anywhere); every other view
@@ -435,6 +439,41 @@ body.view-photo .mast::after {
   gap: 12px;
 }
 
+/* ---- night mode switch ---- */
+/* Square, like everything else here, and it doesn't slide: the design
+   system takes no animation, so the knob simply changes side. */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.theme-switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--cell-bg);
+  cursor: pointer;
+}
+
+.theme-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--ink);
+}
+
+.theme-switch[aria-checked="true"]::after { left: 20px; }
+
+.theme-switch:hover { background: var(--hover-bg); }
+
 /* One picture, centred and capped, so a tall photo doesn't run off the
    bottom of the screen on the page whose whole job is showing it. */
 .photo-page .gallery-item {
@@ -459,7 +498,7 @@ body.view-photo .mast::after {
   font-family: var(--mono);
   font-size: 12px;
   border: 1px solid var(--border);
-  background: #ffffff;
+  background: var(--cell-bg);
   color: var(--ink);
   padding: 2px 4px;
   min-width: 260px;

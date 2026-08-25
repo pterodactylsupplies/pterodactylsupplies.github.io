@@ -1553,13 +1553,10 @@
     back.href = "#";
     back.textContent = "← back to grid";
 
-    // Night mode is on trial on the number pages. The theme it sets applies
-    // everywhere, so until the switch goes site-wide this is where you come
-    // back to to turn it off again.
     const topRow = document.createElement("div");
     topRow.className = "page-top-row";
     topRow.appendChild(back);
-    topRow.appendChild(buildThemeToggle());
+    if (n === THEME_TRIAL_NUMBER) topRow.appendChild(buildThemeToggle());
     section.appendChild(topRow);
 
     const prevN = n <= 1 ? 100 : n - 1;
@@ -1681,16 +1678,40 @@
     applyTheme(theme);
   }
 
+  // The switch lives on one number page while night mode is on trial. The
+  // theme it sets still applies to the whole site, so this is also the page
+  // you come back to to turn it off.
+  const THEME_TRIAL_NUMBER = 42;
+
   function buildThemeToggle() {
-    const link = bracketLink("", (a) => {
-      setTheme(activeTheme() === "dark" ? "light" : "dark");
-      label(a);
-    });
-    const label = (a) => {
-      a.textContent = activeTheme() === "dark" ? "[day mode]" : "[night mode]";
+    const wrap = document.createElement("div");
+    wrap.className = "theme-toggle";
+
+    const label = document.createElement("span");
+    label.textContent = "night";
+    wrap.appendChild(label);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-switch";
+    // a switch rather than a link: it reports its own on/off state, so a
+    // screen reader doesn't have to infer it from the wording
+    btn.setAttribute("role", "switch");
+
+    const sync = () => {
+      const dark = activeTheme() === "dark";
+      btn.setAttribute("aria-checked", String(dark));
+      btn.setAttribute("aria-label", dark ? "Turn night mode off" : "Turn night mode on");
     };
-    label(link);
-    return link;
+
+    btn.addEventListener("click", () => {
+      setTheme(activeTheme() === "dark" ? "light" : "dark");
+      sync();
+    });
+
+    sync();
+    wrap.appendChild(btn);
+    return wrap;
   }
 
   applyTheme(activeTheme());
