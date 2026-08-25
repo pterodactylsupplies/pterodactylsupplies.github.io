@@ -811,7 +811,7 @@
   }
 
   function setView(view) {
-    document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all");
+    document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all", "view-photo");
     // full-bleed is opt-in per page; cleared here so it can't leak between views
     document.body.classList.remove("view-wide");
     // the grid lab dresses the whole page — undo that when leaving it
@@ -898,7 +898,8 @@
       document.body.classList.add("view-wide");
       renderMisc();
     } else if (/^#\/p\/[A-Za-z0-9_-]+\.[a-z0-9]+$/.test(location.hash)) {
-      setView("detail");
+      // its own view, not "detail": here the masthead sits below the picture
+      setView("photo");
       document.body.classList.add("view-wide");
       renderPhoto(location.hash.slice("#/p/".length));
     } else {
@@ -1633,6 +1634,56 @@
     renderProgress();
   }
 
+  // ---- night mode ----
+  // Applied as data-theme on <html>, so the whole page turns over from one
+  // set of custom properties. Remembered per browser; with nothing
+  // remembered the page follows whatever the system asks for.
+  const THEME_KEY = "numbersGallery.theme";
+
+  function storedTheme() {
+    try {
+      const value = localStorage.getItem(THEME_KEY);
+      return value === "dark" || value === "light" ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function systemTheme() {
+    return matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function activeTheme() {
+    return storedTheme() || systemTheme();
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+
+  function setTheme(theme) {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* storage blocked — the choice just won't survive a reload */
+    }
+    applyTheme(theme);
+  }
+
+  function buildThemeToggle() {
+    const link = bracketLink("", (a) => {
+      setTheme(activeTheme() === "dark" ? "light" : "dark");
+      label(a);
+    });
+    const label = (a) => {
+      a.textContent = activeTheme() === "dark" ? "[day mode]" : "[night mode]";
+    };
+    label(link);
+    return link;
+  }
+
+  applyTheme(activeTheme());
+
   // ---- one picture's own page (#/p/<id>) ----
   // Everything the gallery knows about a single photo, in one place, with the
   // share controls. Reached by clicking a picture on the trial pages
@@ -1666,6 +1717,15 @@
     return a;
   }
 
+  // What rides along with a shared picture, where the target accepts text:
+  // "42 · found by Sasha · Tel-Aviv, Israel" and the link back.
+  function shareCaption(p) {
+    const bits = [p.numbers.join(", ")];
+    if (p.submitter) bits.push(`found by ${p.submitter}`);
+    if (p.location) bits.push(p.location);
+    return `${bits.join(" · ")}\n${shareUrl(p)}`;
+  }
+
   function buildShareRow(p) {
     const row = document.createElement("div");
     row.className = "share-row";
@@ -1694,7 +1754,13 @@
       }
       if (shareable) {
         try {
-          await navigator.share({ files: [ready] });
+          // Telegram turns `text` into the picture's caption, so the number,
+          // the finder and a way back travel with it. Instagram ignores
+          // everything but the file, which is why the caption can't be the
+          // only place the link lives. Anything that refuses the combined
+          // payload still gets the picture on its own.
+          const withText = { files: [ready], text: shareCaption(p) };
+          await navigator.share(navigator.canShare(withText) ? withText : { files: [ready] });
         } catch (err) {
           // dismissing the sheet is an abort, not a failure
           if (err && err.name !== "AbortError") {
@@ -1774,7 +1840,13 @@
     back.className = "back-link";
     back.href = home;
     back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
-    section.appendChild(back);
+
+    // On trial here before it goes site-wide.
+    const topRow = document.createElement("div");
+    topRow.className = "photo-top-row";
+    topRow.appendChild(back);
+    topRow.appendChild(buildThemeToggle());
+    section.appendChild(topRow);
 
     const item = document.createElement("div");
     item.className = "gallery-item";
