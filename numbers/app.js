@@ -1987,6 +1987,19 @@
     caption.appendChild(numbersCaption(photo));
     item.appendChild(caption);
 
+    // "5 of 5 on 5" — this picture's place among the ones filed under its own
+    // number. The arrows walk the whole collection, so this is the only thing
+    // saying where you are inside a number.
+    const homeNumber = photo.numbers[0];
+    const withinNumber = photosByNumber[homeNumber] || [];
+    const place = withinNumber.findIndex((p) => p.key === photo.key);
+    if (place !== -1) {
+      const position = document.createElement("div");
+      position.className = "photo-position";
+      position.textContent = `${place + 1} of ${withinNumber.length} on ${homeNumber}`;
+      item.appendChild(position);
+    }
+
     const meta = document.createElement("div");
     meta.className = "gallery-meta";
     const name = photo.submitter || "anonymous";
