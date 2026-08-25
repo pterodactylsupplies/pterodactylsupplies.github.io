@@ -410,26 +410,10 @@ body.view-grid main { max-width: none; }
 .undo-link:hover { background: var(--hover-bg); }
 
 /* ---- one picture's own page (#/p/<id>) ---- */
-/* The picture is what this page is for, so it goes first and the masthead
-   follows it — reordered rather than moved, so the markup stays one shape
-   for every view. */
-body.view-photo {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-body.view-photo main        { order: 1; }
-body.view-photo .mast       { order: 2; padding-top: 32px; }
-body.view-photo .site-footer { order: 3; }
-
-/* the masthead's rule belongs on whichever side faces the content */
-body.view-photo .mast::after {
-  bottom: auto;
-  top: 0;
-  border-bottom: none;
-  border-top: 1px solid var(--border);
-}
+/* No masthead here. This page is one photograph; the wordmark, the tally and
+   the donation line all belong to browsing, and the back link is the only
+   navigation it needs. */
+body.view-photo .mast { display: none; }
 
 .page-top-row {
   display: flex;

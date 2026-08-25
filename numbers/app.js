@@ -784,8 +784,9 @@
     return null;
   }
 
-  // 404 has no cell on the grid and isn't swept into misc: it has its own
-  // page, which doubles as the site's not-found page.
+  // 404 gets no cell on the grid, but is otherwise an ordinary out-of-range
+  // number: its pictures sit in misc with the rest, and it also has a page
+  // of its own, which doubles as the site's not-found page.
   const NOT_FOUND_NUMBER = 404;
 
   function miscEntries() {
@@ -794,7 +795,6 @@
     for (const [k, list] of Object.entries(photosByNumber)) {
       const n = parseInt(k, 10);
       if (n >= 1 && n <= 100) continue;
-      if (n === NOT_FOUND_NUMBER) continue;
       for (const p of list) {
         if (seen.has(p.key)) continue; // dedupe if tagged with >1 out-of-range number
         seen.add(p.key);
@@ -803,6 +803,24 @@
     }
     entries.sort((a, b) => new Date(a.uploaded) - new Date(b.uploaded));
     return entries;
+  }
+
+  // Every picture in one run, ordered the way the slugs read: by number,
+  // then by that number's own sequence. Walking off the end of 42 lands on
+  // 43-1 rather than looping back inside 42.
+  function orderedPhotos() {
+    const byNumber = new Map();
+    for (const p of allEntries()) {
+      const home = p.numbers[0];
+      if (!byNumber.has(home)) byNumber.set(home, []);
+      byNumber.get(home).push(p);
+    }
+    const run = [];
+    for (const home of [...byNumber.keys()].sort((a, b) => a - b)) {
+      const list = byNumber.get(home).sort((a, b) => new Date(a.uploaded) - new Date(b.uploaded));
+      run.push(...list);
+    }
+    return run;
   }
 
   function allEntries() {
@@ -1918,15 +1936,17 @@
     back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
     section.appendChild(back);
 
-    // Neighbours are the other pictures of the same number, in the order they
-    // were published — the same run you'd be walking on that number's page.
-    // It wraps, like the number pages do.
-    const homeNumber = onGrid.length ? onGrid[0] : photo.numbers[0];
-    const siblings = (photosByNumber[homeNumber] || []).filter((p) => p.slug || p.key);
-    const at = siblings.findIndex((p) => p.key === photo.key);
-    if (siblings.length > 1 && at !== -1) {
-      const prev = siblings[(at - 1 + siblings.length) % siblings.length];
-      const next = siblings[(at + 1) % siblings.length];
+    // Neighbours run through the whole collection, not just this number, so
+    // the end of 42 leads into 43 rather than looping. It wraps at the very
+    // ends, like the number pages do.
+    const homeNumber = photo.numbers[0];
+    const withinNumber = (photosByNumber[homeNumber] || []);
+    const place = withinNumber.findIndex((p) => p.key === photo.key);
+    const run = orderedPhotos();
+    const at = run.findIndex((p) => p.key === photo.key);
+    if (run.length > 1 && at !== -1) {
+      const prev = run[(at - 1 + run.length) % run.length];
+      const next = run[(at + 1) % run.length];
       const navRow = document.createElement("div");
       navRow.className = "detail-nav-row";
 
@@ -1941,7 +1961,7 @@
       num.textContent = photoId(photo);
       const meta = document.createElement("div");
       meta.className = "detail-meta";
-      meta.textContent = `${at + 1} of ${siblings.length} on ${homeNumber}`;
+      meta.textContent = `${place + 1} of ${withinNumber.length} on ${homeNumber}`;
       centre.append(num, meta);
 
       const nextLink = document.createElement("a");
