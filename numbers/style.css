@@ -427,7 +427,7 @@ body.view-photo .mast::after {
   border-top: 1px solid var(--border);
 }
 
-.photo-top-row {
+.page-top-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;

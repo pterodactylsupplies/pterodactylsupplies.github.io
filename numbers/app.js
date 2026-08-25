@@ -16,7 +16,10 @@
   // routed — a link crawler never receives the "#/p/..." part, so only the
   // worker can answer with meta tags naming one particular photo.
   const SHARE = (window.CONFIG.SHARE_BASE || window.CONFIG.API_BASE).replace(/\/$/, "");
-  const photoId = (p) => p.key.slice("photos/".length);
+  // The slug ("42-3") is the readable name; the key id is the fallback for
+  // anything the worker hasn't named yet, and the form older share links
+  // already carry. Both resolve, here and at the worker.
+  const photoId = (p) => p.slug || p.key.slice("photos/".length);
   const photoHref = (p) => `#/p/${photoId(p)}`;
   const shareUrl = (p) => `${SHARE}/p/${photoId(p)}`;
 
@@ -897,7 +900,7 @@
       setView("misc");
       document.body.classList.add("view-wide");
       renderMisc();
-    } else if (/^#\/p\/[A-Za-z0-9_-]+\.[a-z0-9]+$/.test(location.hash)) {
+    } else if (/^#\/p\/[A-Za-z0-9_.-]+$/.test(location.hash)) {
       // its own view, not "detail": here the masthead sits below the picture
       setView("photo");
       document.body.classList.add("view-wide");
@@ -1549,7 +1552,15 @@
     back.className = "back-link";
     back.href = "#";
     back.textContent = "← back to grid";
-    section.appendChild(back);
+
+    // Night mode is on trial on the number pages. The theme it sets applies
+    // everywhere, so until the switch goes site-wide this is where you come
+    // back to to turn it off again.
+    const topRow = document.createElement("div");
+    topRow.className = "page-top-row";
+    topRow.appendChild(back);
+    topRow.appendChild(buildThemeToggle());
+    section.appendChild(topRow);
 
     const prevN = n <= 1 ? 100 : n - 1;
     const nextN = n >= 100 ? 1 : n + 1;
@@ -1731,7 +1742,7 @@
     row.className = "share-row";
 
     const ext = p.key.slice(p.key.lastIndexOf(".") + 1) || "jpg";
-    const filename = `${(p.numbers || []).join("-") || "number"}-give-or-take-100.${ext}`;
+    const filename = `${photoId(p)}-give-or-take-100.${ext}`;
 
     // navigator.share() has to run inside the click that triggered it, and
     // awaiting a fetch in the handler loses that gesture on Safari. The bytes
@@ -1808,8 +1819,9 @@
   }
 
   function renderPhoto(id) {
-    const key = `photos/${id}`;
-    const photo = allEntries().find((p) => p.key === key);
+    // by slug first, then by key id, so links shared before slugs still land
+    const photo = allEntries().find((p) => p.slug === id) ||
+      allEntries().find((p) => p.key === `photos/${id}`);
 
     const section = document.createElement("section");
     section.className = "detail-section photo-page";
@@ -1840,13 +1852,7 @@
     back.className = "back-link";
     back.href = home;
     back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
-
-    // On trial here before it goes site-wide.
-    const topRow = document.createElement("div");
-    topRow.className = "photo-top-row";
-    topRow.appendChild(back);
-    topRow.appendChild(buildThemeToggle());
-    section.appendChild(topRow);
+    section.appendChild(back);
 
     const item = document.createElement("div");
     item.className = "gallery-item";
