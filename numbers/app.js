@@ -8,6 +8,18 @@
 
   const imgUrl = (key) => `${API}/img/${key}`;
 
+  // ---- one page per picture, and the link that previews as it.
+  //
+  // A key is photos/<ms>-<id>.<ext>; dropping the prefix leaves an id with no
+  // path separators, safe to drop straight into a URL. The share link points
+  // at the worker rather than here, because this site is static and hash
+  // routed — a link crawler never receives the "#/p/..." part, so only the
+  // worker can answer with meta tags naming one particular photo.
+  const SHARE = (window.CONFIG.SHARE_BASE || window.CONFIG.API_BASE).replace(/\/$/, "");
+  const photoId = (p) => p.key.slice("photos/".length);
+  const photoHref = (p) => `#/p/${photoId(p)}`;
+  const shareUrl = (p) => `${SHARE}/p/${photoId(p)}`;
+
   // ---- "my uploads" — lets a contributor undo their own photo, even after
   // a reload, without any account. The server hands back a per-photo
   // deleteToken at upload time; we keep it in this browser's localStorage.
@@ -829,6 +841,18 @@
         fixedGap: 150,
         hideSizeValue: true,
       });
+    } else if (location.hash === "#/all-share") {
+      // the same wall, on trial: a picture opens its own page instead of the
+      // raw file. Unlisted while we live with it.
+      setView("all");
+      renderAll({
+        wide: true,
+        numbersToggle: true,
+        maxWidth: 1000,
+        fixedGap: 150,
+        hideSizeValue: true,
+        linkToPage: true,
+      });
     } else if (location.hash === "#/all-develop") {
       // the same wall with both sliders exposed, kept to experiment on
       setView("all");
@@ -873,16 +897,22 @@
       setView("misc");
       document.body.classList.add("view-wide");
       renderMisc();
+    } else if (/^#\/p\/[A-Za-z0-9_-]+\.[a-z0-9]+$/.test(location.hash)) {
+      setView("detail");
+      document.body.classList.add("view-wide");
+      renderPhoto(location.hash.slice("#/p/".length));
     } else {
       // Number pages run full window by default. "#/42/narrow" keeps the old
       // capped layout; "#/42/wide" still works, since links to it exist.
-      const suffixed = location.hash.match(/^#\/(\d{1,3})\/(wide|narrow)$/);
+      // "#/42/share" is the trial twin of "#/42", where a picture opens its
+      // own page rather than the raw file.
+      const suffixed = location.hash.match(/^#\/(\d{1,3})\/(wide|narrow|share)$/);
       const n = suffixed ? Number(suffixed[1]) : currentNumber();
       if (n && n >= 1 && n <= 100) {
         const narrow = suffixed ? suffixed[2] === "narrow" : false;
         setView("detail");
         if (!narrow) document.body.classList.add("view-wide");
-        renderDetail(n, narrow);
+        renderDetail(n, narrow, { linkToPage: suffixed ? suffixed[2] === "share" : false });
       } else {
         setView("grid");
         renderGrid();
@@ -1400,14 +1430,25 @@
     return a;
   }
 
+  // Where a picture goes when clicked. The long-standing answer is the raw
+  // file in a new tab; `linkToPage` sends it to the picture's own page
+  // instead, and is opt-in per page while that's on trial.
+  function photoLink(link, p, opts = {}) {
+    if (opts.linkToPage) {
+      link.href = photoHref(p);
+      return;
+    }
+    link.href = imgUrl(p.key);
+    link.target = "_blank";
+    link.rel = "noopener";
+  }
+
   function buildGalleryItem(p, i, total, currentN, mine, opts = {}) {
     const item = document.createElement("div");
     item.className = "gallery-item";
 
     const link = document.createElement("a");
-    link.href = imgUrl(p.key);
-    link.target = "_blank";
-    link.rel = "noopener";
+    photoLink(link, p, opts);
     const img = document.createElement("img");
     img.loading = "lazy";
     img.alt = currentN != null ? `Picture of the number ${currentN}` : `Picture marked ${p.numbers.join(", ")}`;
@@ -1491,10 +1532,11 @@
     return item;
   }
 
-  function renderDetail(n, narrow = false) {
-    // prev/next keep whichever width you're browsing in; wide is the plain
-    // "#/42" form now, so only the narrow variant needs a suffix
-    const numberHref = (x) => (narrow ? `#/${x}/narrow` : `#/${x}`);
+  function renderDetail(n, narrow = false, opts = {}) {
+    // prev/next keep whichever width — or trial — you're browsing in; wide is
+    // the plain "#/42" form now, so only the other variants need a suffix
+    const numberHref = (x) =>
+      narrow ? `#/${x}/narrow` : opts.linkToPage ? `#/${x}/share` : `#/${x}`;
     document.title = `numberwang (${n})`;
     setWordmark(`Give or Take ${n}`);
     const photos = photosByNumber[n] || [];
@@ -1525,7 +1567,10 @@
     if (photos.length) {
       const gallery = document.createElement("div");
       gallery.id = "detail-gallery";
-      photos.forEach((p, i) => gallery.appendChild(buildGalleryItem(p, i, photos.length, n, mine)));
+      photos.forEach((p, i) =>
+        gallery.appendChild(buildGalleryItem(p, i, photos.length, n, mine, {
+          linkToPage: opts.linkToPage,
+        })));
       section.appendChild(gallery);
     } else {
       const empty = document.createElement("div");
@@ -1584,6 +1629,209 @@
     hint.textContent = "Use “add a number” above to add something here.";
     section.appendChild(hint);
 
+    app.replaceChildren(section);
+    renderProgress();
+  }
+
+  // ---- one picture's own page (#/p/<id>) ----
+  // Everything the gallery knows about a single photo, in one place, with the
+  // share controls. Reached by clicking a picture on the trial pages
+  // (#/all-share, #/<n>/share), and it's what a shared link lands on.
+
+  // Whether this browser can hand a file to another app at all. Probed with a
+  // throwaway file, because canShare() answers per payload, not per browser —
+  // desktop Firefox and some desktop Chrome builds say no to files while
+  // still having navigator.share for links.
+  function canShareFiles() {
+    try {
+      if (typeof File === "undefined" || !navigator.canShare) return false;
+      const probe = new File([new Blob([""], { type: "image/jpeg" })], "probe.jpg", {
+        type: "image/jpeg",
+      });
+      return navigator.canShare({ files: [probe] });
+    } catch {
+      return false;
+    }
+  }
+
+  function bracketLink(text, onClick) {
+    const a = document.createElement("a");
+    a.href = "#";
+    a.className = "owner-link";
+    a.textContent = text;
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      onClick(a);
+    });
+    return a;
+  }
+
+  function buildShareRow(p) {
+    const row = document.createElement("div");
+    row.className = "share-row";
+
+    const ext = p.key.slice(p.key.lastIndexOf(".") + 1) || "jpg";
+    const filename = `${(p.numbers || []).join("-") || "number"}-give-or-take-100.${ext}`;
+
+    // navigator.share() has to run inside the click that triggered it, and
+    // awaiting a fetch in the handler loses that gesture on Safari. The bytes
+    // are already in the HTTP cache from the picture above, so pulling them
+    // now costs nothing and leaves the click with nothing to wait for.
+    const filePromise = fetch(imgUrl(p.key))
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => (blob ? new File([blob], filename, { type: blob.type }) : null))
+      .catch(() => null);
+    let file = null;
+    filePromise.then((f) => { file = f; });
+
+    const shareable = canShareFiles();
+
+    const main = bracketLink(shareable ? "[share the picture]" : "[download the picture]", async (a) => {
+      const ready = file || (await filePromise);
+      if (!ready) {
+        a.textContent = "[couldn't fetch the picture]";
+        return;
+      }
+      if (shareable) {
+        try {
+          await navigator.share({ files: [ready] });
+        } catch (err) {
+          // dismissing the sheet is an abort, not a failure
+          if (err && err.name !== "AbortError") {
+            a.textContent = "[sharing was refused]";
+          }
+        }
+        return;
+      }
+      const href = URL.createObjectURL(ready);
+      const dl = document.createElement("a");
+      dl.href = href;
+      dl.download = filename;
+      dl.click();
+      setTimeout(() => URL.revokeObjectURL(href), 10000);
+    });
+    row.appendChild(main);
+
+    const copy = bracketLink("[copy link]", async (a) => {
+      const url = shareUrl(p);
+      try {
+        await navigator.clipboard.writeText(url);
+        a.textContent = "[copied]";
+        setTimeout(() => { a.textContent = "[copy link]"; }, 1500);
+      } catch {
+        // clipboard blocked — show the link so it can be copied by hand
+        const box = document.createElement("input");
+        box.className = "share-url";
+        box.readOnly = true;
+        box.value = url;
+        a.replaceWith(box);
+        box.select();
+      }
+    });
+    row.appendChild(copy);
+
+    const raw = document.createElement("a");
+    raw.className = "owner-link";
+    raw.href = imgUrl(p.key);
+    raw.target = "_blank";
+    raw.rel = "noopener";
+    raw.textContent = "[open the file]";
+    row.appendChild(raw);
+
+    return row;
+  }
+
+  function renderPhoto(id) {
+    const key = `photos/${id}`;
+    const photo = allEntries().find((p) => p.key === key);
+
+    const section = document.createElement("section");
+    section.className = "detail-section photo-page";
+
+    if (!photo) {
+      document.title = "numberwang";
+      setWordmark("The Game Where We Collect Numbers");
+      const back = document.createElement("a");
+      back.className = "back-link";
+      back.href = "#";
+      back.textContent = "← back to grid";
+      section.appendChild(back);
+      const gone = document.createElement("div");
+      gone.className = "no-photos";
+      gone.textContent = "That picture isn't here any more.";
+      section.appendChild(gone);
+      app.replaceChildren(section);
+      renderProgress();
+      return;
+    }
+
+    const onGrid = (photo.numbers || []).filter((n) => n >= 1 && n <= 100);
+    const home = onGrid.length ? `#/${onGrid[0]}` : "#/misc";
+    document.title = `numberwang (${photo.numbers.join(", ")})`;
+    setWordmark(`Give or Take ${photo.numbers.join(", ")}`);
+
+    const back = document.createElement("a");
+    back.className = "back-link";
+    back.href = home;
+    back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
+    section.appendChild(back);
+
+    const item = document.createElement("div");
+    item.className = "gallery-item";
+
+    const img = document.createElement("img");
+    img.src = imgUrl(photo.key);
+    img.alt = `Picture of ${photo.numbers.join(", ")}`;
+    item.appendChild(img);
+
+    const caption = document.createElement("div");
+    caption.className = "gallery-caption";
+    caption.appendChild(numbersCaption(photo));
+    item.appendChild(caption);
+
+    const meta = document.createElement("div");
+    meta.className = "gallery-meta";
+    const name = photo.submitter || "anonymous";
+    meta.appendChild(document.createTextNode(photo.theirNumber ? `${name} (${photo.theirNumber})` : name));
+    const contact = contactDisplay(photo.contact);
+    if (contact) {
+      meta.appendChild(document.createTextNode(" · "));
+      meta.appendChild(contactNode(contact));
+    }
+    const bits = [];
+    if (photo.favoriteNumber) bits.push(`favorite number ${photo.favoriteNumber}`);
+    if (photo.location) bits.push(photo.location);
+    if (photo.foundAt) bits.push(`found ${formatFoundAt(photo.foundAt)}`);
+    bits.push(`published ${relativeTime(photo.uploaded)}`);
+    meta.appendChild(document.createTextNode(` · ${bits.join(" · ")}`));
+    item.appendChild(meta);
+
+    if (photo.comments) {
+      const comment = document.createElement("div");
+      comment.className = "gallery-comment";
+      comment.textContent = `“${photo.comments}”`;
+      item.appendChild(comment);
+    }
+
+    item.appendChild(buildShareRow(photo));
+
+    const mine = loadMyUploads();
+    if (mine[photo.key]) {
+      const ownerRow = document.createElement("div");
+      ownerRow.className = "owner-row";
+      ownerRow.appendChild(bracketLink(photo.contact ? "[edit contact]" : "[add contact]", (a) => {
+        editOwnContact(photo, a);
+      }));
+      ownerRow.appendChild(bracketLink("[remove]", async (a) => {
+        if (!confirm("Remove this picture? This can't be undone.")) return;
+        await undoUpload(photo.key, a);
+        // this page is about a picture that no longer exists — don't sit on it
+        if (!allEntries().some((e) => e.key === photo.key)) location.hash = home;
+      }));
+      item.appendChild(ownerRow);
+    }
+
+    section.appendChild(item);
     app.replaceChildren(section);
     renderProgress();
   }
@@ -2136,14 +2384,12 @@
   // A picture with nothing written under it — the details live in the
   // tooltip instead. With `withNumbers`, the numbers alone appear below the
   // picture as links, and nothing else.
-  function buildPlainItem(p, withNumbers = false) {
+  function buildPlainItem(p, withNumbers = false, opts = {}) {
     const item = document.createElement("div");
     item.className = "gallery-item gallery-item-plain";
 
     const link = document.createElement("a");
-    link.href = imgUrl(p.key);
-    link.target = "_blank";
-    link.rel = "noopener";
+    photoLink(link, p, opts);
     link.title = plainTooltip(p);
 
     const img = document.createElement("img");
@@ -2635,8 +2881,11 @@
       const current = effectiveMode();
       items = sorted.map((p, i) =>
         plain()
-          ? buildPlainItem(p, current === "numbers")
-          : buildGalleryItem(p, i, sorted.length, null, mine, { caption: numbersCaption(p) })
+          ? buildPlainItem(p, current === "numbers", { linkToPage: opts.linkToPage })
+          : buildGalleryItem(p, i, sorted.length, null, mine, {
+              caption: numbersCaption(p),
+              linkToPage: opts.linkToPage,
+            })
       );
       layout();
     }

@@ -388,6 +388,38 @@ body.view-grid main { max-width: none; }
 
 .undo-link:hover { background: var(--hover-bg); }
 
+/* ---- one picture's own page (#/p/<id>) ---- */
+/* One picture, centred and capped, so a tall photo doesn't run off the
+   bottom of the screen on the page whose whole job is showing it. */
+.photo-page .gallery-item {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.photo-page .gallery-item img {
+  max-height: 78vh;
+  object-fit: contain;
+}
+
+.share-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.share-url {
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink);
+  padding: 2px 4px;
+  min-width: 260px;
+  flex: 1;
+}
+
 .no-photos {
   margin-top: 48px;
   border: 1px solid var(--border);
