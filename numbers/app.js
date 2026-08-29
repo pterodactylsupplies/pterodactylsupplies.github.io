@@ -17,7 +17,7 @@
   // worker can answer with meta tags naming one particular photo.
   const SHARE = (window.CONFIG.SHARE_BASE || window.CONFIG.API_BASE).replace(/\/$/, "");
   // The slug ("42-3") is the readable name; the key id is the fallback for
-  // anything the worker hasn't named yet, and the form older share links
+  // anything the worker hasn’t named yet, and the form older share links
   // already carry. Both resolve, here and at the worker.
   const photoId = (p) => p.slug || p.key.slice("photos/".length);
   const photoHref = (p) => `#/p/${photoId(p)}`;
@@ -25,7 +25,7 @@
 
   // ---- "my uploads" — lets a contributor undo their own photo, even after
   // a reload, without any account. The server hands back a per-photo
-  // deleteToken at upload time; we keep it in this browser's localStorage.
+  // deleteToken at upload time; we keep it in this browser’s localStorage.
   const MY_UPLOADS_KEY = "numbersGallery.myUploads";
 
   function loadMyUploads() {
@@ -49,7 +49,7 @@
   }
 
   // ---- form memory — remembers what a contributor typed last time (name,
-  // location, comments, etc.) so they don't retype it on every submission.
+  // location, comments, etc.) so they don’t retype it on every submission.
   // The number(s) a photo is tagged with are deliberately never remembered.
   const FORM_MEMORY_KEY = "numbersGallery.formMemory";
   const FORM_MEMORY_FIELDS = [
@@ -116,7 +116,7 @@
     );
     if (entered === null) return; // cancelled
 
-    // every picture of theirs that's still in the gallery
+    // every picture of theirs that’s still in the gallery
     const owned = allEntries().filter((e) => mine[e.key]);
     let targets = [p];
     if (owned.length > 1) {
@@ -136,7 +136,7 @@
       render();
     } catch (err) {
       linkEl.textContent = original;
-      alert(`Couldn't save that: ${err.message}`);
+      alert(`Couldn’t save that: ${err.message}`);
     }
   }
 
@@ -156,7 +156,7 @@
       render();
     } catch (err) {
       linkEl.textContent = "[remove]";
-      alert(`Couldn't remove that picture: ${err.message}`);
+      alert(`Couldn’t remove that picture: ${err.message}`);
     }
   }
 
@@ -223,10 +223,10 @@
 
   // ---- EXIF (GPS + capture date), read straight from the JPEG bytes ----
   // No library — this is a small hand-rolled reader scoped to just the two
-  // tags we need. Returns {} when there's nothing readable; `reason` says
+  // tags we need. Returns {} when there’s nothing readable; `reason` says
   // why, so the form can explain itself instead of just going blank.
   //
-  // Phones are the hard case here: the file's reported MIME type is often
+  // Phones are the hard case here: the file’s reported MIME type is often
   // wrong or empty coming out of a photo picker, and some cameras put a big
   // thumbnail or maker-note blob ahead of the GPS data — so we sniff the
   // real bytes rather than trusting file.type, and read a generous window.
@@ -257,7 +257,7 @@
       if ((marker & 0xff00) !== 0xff00) break;
       if (marker === 0xffd9 || marker === 0xffda) break; // image data starts
       const size = view.getUint16(offset + 2);
-      if (size < 2) break; // malformed length, don't loop forever
+      if (size < 2) break; // malformed length, don’t loop forever
       if (marker === 0xffe1 && offset + 10 <= view.byteLength &&
           view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0x0000) {
         return offset + 10;
@@ -277,7 +277,7 @@
 
   // ---- HEIC ----
   // HEIC keeps EXIF as an item inside the ISO-BMFF "meta" box: "iinf" names
-  // the items, "iloc" says where each one's bytes live. Walk both to find the
+  // the items, "iloc" says where each one’s bytes live. Walk both to find the
   // Exif item. iPhones shoot HEIC by default, so without this every iPhone
   // photo arrives with no location at all.
 
@@ -291,14 +291,14 @@
       );
       let headerSize = 8;
       if (size === 1) {
-        // 64-bit length; anything needing the high word isn't a photo
+        // 64-bit length; anything needing the high word isn’t a photo
         if (offset + 16 > end || view.getUint32(offset + 8) !== 0) return null;
         size = view.getUint32(offset + 12);
         headerSize = 16;
       } else if (size === 0) {
         size = end - offset; // runs to the end of the file
       }
-      if (size < headerSize) return null; // malformed — don't loop forever
+      if (size < headerSize) return null; // malformed — don’t loop forever
       if (boxType === type) {
         return { dataStart: offset + headerSize, end: Math.min(offset + size, end) };
       }
@@ -432,7 +432,7 @@
           return { reason: "unreadable" };
         }
       }
-      // the item's payload starts with a 4-byte offset to the TIFF header
+      // the item’s payload starts with a 4-byte offset to the TIFF header
       if (at + 4 > block.byteLength) return { reason: "no-exif" };
       const tiffStart = at + 4 + block.getUint32(at);
       if (tiffStart + 8 > block.byteLength) return { reason: "no-exif" };
@@ -446,7 +446,7 @@
     return parseTiffExif(view, exifOffset);
   }
 
-  // The TIFF block that both JPEG's APP1 segment and HEIC's Exif item wrap.
+  // The TIFF block that both JPEG’s APP1 segment and HEIC’s Exif item wrap.
   // `exifOffset` points at the byte-order mark ("II" or "MM").
   function parseTiffExif(view, exifOffset) {
     try {
@@ -491,7 +491,7 @@
       }
 
       if (ifd0[0x8825]) {
-        // The photo was written with a GPS block. If we still can't get
+        // The photo was written with a GPS block. If we still can’t get
         // coordinates out of it, the values were emptied after the fact —
         // which is a different story from a photo that never had any.
         result.gpsBlockPresent = true;
@@ -506,7 +506,7 @@
           if (latRef === "S") lat = -lat;
           if (lonRef === "W") lon = -lon;
           // Some cameras write an all-zero GPS block when they had no fix —
-          // that's null island, not a real place.
+          // that’s null island, not a real place.
           const usable =
             Number.isFinite(lat) && Number.isFinite(lon) &&
             Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
@@ -532,14 +532,14 @@
     return exifDate.slice(0, 10).replace(/:/g, "-");
   }
 
-  // Reverse/forward geocoding via OpenStreetMap's Nominatim (free, no key).
+  // Reverse/forward geocoding via OpenStreetMap’s Nominatim (free, no key).
   // Labels go town → county/area → state/region → country, so places in
   // countries with meaningful subdivisions (US states, UK counties, …) keep
   // that context. Never street addresses, never postcodes — postcodes can be
   // near-address precision in some countries (UK), which we deliberately
-  // don't collect.
+  // don’t collect.
   // Strips the administrative noise words so two labels can be compared for
-  // "is this just the city's name again?" — "Tel Aviv" vs "Tel Aviv District".
+  // "is this just the city’s name again?" — "Tel Aviv" vs "Tel Aviv District".
   function bareName(value) {
     return String(value || "")
       .toLowerCase()
@@ -558,11 +558,11 @@
   }
 
   // Town → state/province → country. Counties and districts are deliberately
-  // left out: they're rarely how anyone describes where they were, and they
+  // left out: they’re rarely how anyone describes where they were, and they
   // produce things like "Tel Aviv, Tel Aviv Subdistrict, Tel-Aviv District,
   // Israel". A state/province is kept only when it adds something the town
-  // name doesn't already say — so US and Canadian places keep theirs, while
-  // city-states and same-named regions don't repeat themselves.
+  // name doesn’t already say — so US and Canadian places keep theirs, while
+  // city-states and same-named regions don’t repeat themselves.
   function placeLabel(addr) {
     const town =
       addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || "";
@@ -608,7 +608,7 @@
   async function reverseGeocode(lat, lon) {
     const first = await reverseGeocodeOnce(lat, lon);
     if (first.label || first.error === "unnamed") return first;
-    // One retry, paced past Nominatim's one-per-second limit. Worth it: the
+    // One retry, paced past Nominatim’s one-per-second limit. Worth it: the
     // coordinates are good, and a throttle or a dropped request on a phone is
     // exactly the transient case that used to read as "no location".
     await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -646,7 +646,7 @@
     });
   }
 
-  // Best-effort number guess from the photo itself, via the worker's vision
+  // Best-effort number guess from the photo itself, via the worker’s vision
   // model — a pre-fill suggestion only, never trusted outright (the model
   // does misread digits sometimes). Returns the guessed number as a string,
   // or null if nothing was found or the request failed.
@@ -663,17 +663,17 @@
     }
   }
 
-  // Applies EXIF-derived location/date to a form's fields, if their
+  // Applies EXIF-derived location/date to a form’s fields, if their
   // "use metadata" checkboxes are checked. Called once a file is staged.
-  // Many phones don't embed GPS/date at all (location tagging off, HEIC
+  // Many phones don’t embed GPS/date at all (location tagging off, HEIC
   // stripped on conversion, etc.) — when that happens we uncheck the box
   // and unlock the field instead of leaving it stuck empty and disabled,
   // since that reads as "broken" rather than "no data in this photo".
   // Phones commonly hand over photos with the location already stripped —
-  // by the camera's own settings, or by the photo picker on the way out.
-  // Naming the likely cause beats a blank field the person can't explain.
+  // by the camera’s own settings, or by the photo picker on the way out.
+  // Naming the likely cause beats a blank field the person can’t explain.
   // Says which stage failed rather than four ways of saying "no location".
-  // The distinction that matters: "this photo has none" is the person's to
+  // The distinction that matters: "this photo has none" is the person’s to
   // fix, "the lookup broke" is ours — and they used to read identically.
   function locationHint(exif, geo) {
     if (geo) {
@@ -682,10 +682,10 @@
         return "the place lookup is rate-limited right now — type it in";
       }
       if (geo.error === "offline") {
-        return "couldn't reach the place lookup — type it in";
+        return "couldn’t reach the place lookup — type it in";
       }
       if (geo.error === "unnamed") {
-        return "this photo's coordinates have no place name — type it in";
+        return "this photo’s coordinates have no place name — type it in";
       }
       return "read the coordinates, but the place lookup failed — type it in";
     }
@@ -693,9 +693,9 @@
     // has it emptied out. Android blanks the GPS values in place when it
     // serves a photo to an app without full media access, so the file looks
     // untouched — same size, every other tag intact. Saying "no location"
-    // here would be a false statement about the person's own photo.
+    // here would be a false statement about the person’s own photo.
     if (exif.reason === "gps-blanked") {
-      return "your phone hid this photo's location from the browser — type it in";
+      return "your phone hid this photo’s location from the browser — type it in";
     }
     if (exif.reason === "no-gps") {
       return "this photo has no location saved in it — type it in";
@@ -704,9 +704,9 @@
       return "this photo carries no location data — type it in";
     }
     if (exif.reason === "unreadable") {
-      return "couldn't read this photo's data — type it in";
+      return "couldn’t read this photo’s data — type it in";
     }
-    return "couldn't find a location — type it in";
+    return "couldn’t find a location — type it in";
   }
 
   async function applyExifMetadata(container, file) {
@@ -715,7 +715,7 @@
     // A box that unchecked itself for an earlier photo ("no data in that
     // one") re-arms for this new photo — otherwise one GPS-less photo would
     // permanently kill metadata detection for the rest of the form. Only a
-    // person's own uncheck (a real click) is treated as permanent.
+    // person’s own uncheck (a real click) is treated as permanent.
     const rearm = (checkbox) => {
       if (checkbox && !checkbox.checked && checkbox.dataset.autoUnchecked) {
         checkbox.checked = true;
@@ -735,7 +735,7 @@
       delete locCheckbox.dataset.autoUnchecked;
       // The checked box promises "this value comes from the photo", so any
       // previous content — including the location remembered from the last
-      // submission — must not survive into a new photo's slot.
+      // submission — must not survive into a new photo’s slot.
       locInput.value = "";
       locInput.placeholder = "";
       let geo = null;
@@ -786,7 +786,7 @@
 
   // 404 gets no cell on the grid, but is otherwise an ordinary out-of-range
   // number: its pictures sit in misc with the rest, and it also has a page
-  // of its own, which doubles as the site's not-found page.
+  // of its own, which doubles as the site’s not-found page.
   const NOT_FOUND_NUMBER = 404;
 
   function miscEntries() {
@@ -806,7 +806,7 @@
   }
 
   // Every picture in one run, ordered the way the slugs read: by number,
-  // then by that number's own sequence. Walking off the end of 42 lands on
+  // then by that number’s own sequence. Walking off the end of 42 lands on
   // 43-1 rather than looping back inside 42.
   function orderedPhotos() {
     const byNumber = new Map();
@@ -840,9 +840,9 @@
     document.body.classList.remove("view-grid", "view-detail", "view-misc", "view-terms", "view-all", "view-photo");
     // On a narrow screen the picture page parks its neighbour links in the
     // masthead, which outlives #app — so clear any left behind by the page
-    // we're leaving.
+    // we’re leaving.
     document.querySelectorAll(".mast .photo-steps").forEach((el) => el.remove());
-    // full-bleed is opt-in per page; cleared here so it can't leak between views
+    // full-bleed is opt-in per page; cleared here so it can’t leak between views
     document.body.classList.remove("view-wide");
     // the grid lab dresses the whole page — undo that when leaving it
     for (const cls of [...document.body.classList]) {
@@ -992,19 +992,19 @@
     };
 
     addParagraphs([
-      "By submitting a photo to Give or Take, you confirm it's yours to share, and you give anyone — us, other visitors, anyone on the internet — permission to use, copy, modify, print, or republish it, for any purpose, without asking first and without paying you. You're not giving up ownership of the photo — you're just saying nobody needs your permission to use it.",
-      "Don't submit a photo you don't have the rights to share, or one that includes other identifiable people without their OK.",
+      "By submitting a photo to Give or Take, you confirm it’s yours to share, and you give anyone — us, other visitors, anyone on the internet — permission to use, copy, modify, print, or republish it, for any purpose, without asking first and without paying you. You’re not giving up ownership of the photo — you’re just saying nobody needs your permission to use it.",
+      "Don’t submit a photo you don’t have the rights to share, or one that includes other identifiable people without their OK.",
       "Photos publish immediately and are not reviewed before appearing on the site.",
     ]);
 
-    addHeading("What's stored on your device");
+    addHeading("What’s stored on your device");
     addParagraphs([
-      "This site sets no cookies and runs no analytics or advertising trackers. It does keep a few things in your browser's own storage, purely so the site works the way you'd expect:",
+      "This site sets no cookies and runs no analytics or advertising trackers. It does keep a few things in your browser’s own storage, purely so the site works the way you’d expect:",
     ]);
     addList([
-      "what you last typed into the form — your name, contact, location and so on — so you don't have to type it again next time",
+      "what you last typed into the form — your name, contact, location and so on — so you don’t have to type it again next time",
       "a private token for each picture you add, which is the only thing that lets you remove that picture later",
-      "which pictures you'd already seen, to work out the “new since your last visit” count",
+      "which pictures you’d already seen, to work out the “new since your last visit” count",
       "your sorting and picture-size choices on the all-pictures page",
     ]);
     addParagraphs([
@@ -1014,8 +1014,8 @@
     addHeading("What leaves your device");
     addList([
       "The photo and everything you type alongside it — name, contact, location, date, comments — are published publicly on this site for anyone to see.",
-      "Pictures and their details are stored on Cloudflare, which hosts this project's back end.",
-      "If you let a photo fill in its own location, the coordinates from that photo are sent to OpenStreetMap's Nominatim service to turn them into a place name. If you type a location instead, what you type is sent there to fetch suggestions.",
+      "Pictures and their details are stored on Cloudflare, which hosts this project’s back end.",
+      "If you let a photo fill in its own location, the coordinates from that photo are sent to OpenStreetMap’s Nominatim service to turn them into a place name. If you type a location instead, what you type is sent there to fetch suggestions.",
       "Nothing else is shared, and nothing is sold.",
     ]);
 
@@ -1025,16 +1025,16 @@
   // ---- "new since your last visit" ----
   // Per-browser only, since there are no accounts.
   //
-  // The baseline is the newest photo's own upload timestamp as of your last
+  // The baseline is the newest photo’s own upload timestamp as of your last
   // visit — deliberately NOT the wall-clock time you visited. Comparing the
-  // device's clock against server timestamps made the count drift whenever
+  // device’s clock against server timestamps made the count drift whenever
   // the two disagreed (phone clocks are routinely off by minutes), which is
   // what made this unstable. Server times compared against server times
-  // can't drift.
+  // can’t drift.
   //
-  // It's pinned in sessionStorage for the length of a visit so reloading or
+  // It’s pinned in sessionStorage for the length of a visit so reloading or
   // moving between pages keeps showing the same count instead of zeroing it
-  // before you've had a chance to go and look.
+  // before you’ve had a chance to go and look.
   const LAST_SEEN_KEY = "numbersGallery.lastSeenNewest";
   const VISIT_BASELINE_KEY = "numbersGallery.visitBaseline";
   let visitBaseline; // undefined until resolved once per page load
@@ -1055,7 +1055,7 @@
       if (pinned === null) {
         // First page of a new visit: compare against whatever was newest
         // when we were last here ("" on a first-ever visit, which shows no
-        // badge — there's no "since" to speak of yet).
+        // badge — there’s no "since" to speak of yet).
         pinned = localStorage.getItem(LAST_SEEN_KEY) || "";
         sessionStorage.setItem(VISIT_BASELINE_KEY, pinned);
       }
@@ -1074,7 +1074,7 @@
     }).length;
   }
 
-  // Remember the newest photo we've shown, so the next visit compares
+  // Remember the newest photo we’ve shown, so the next visit compares
   // against it. Safe to call repeatedly; only ever moves forward.
   function rememberSeen(newest) {
     if (!newest) return;
@@ -1193,7 +1193,7 @@
       stored = {};
     }
     const prefs = Object.assign(
-      // defaults mirror the live site, so the lab opens on what you'd see
+      // defaults mirror the live site, so the lab opens on what you’d see
       {
         cell: 90,
         gap: 50,
@@ -1360,7 +1360,7 @@
       section.classList.toggle("lab-noframes", !prefs.frames);
       section.style.setProperty("--lab-frame-width", `${prefs.frameWidth}px`);
       // Native border-styles go straight through as a value; the two-tone
-      // ones aren't real CSS keywords, so they ride on a class instead and
+      // ones aren’t real CSS keywords, so they ride on a class instead and
       // fall back to solid for the underlying border.
       const isNative = NATIVE_FRAME_STYLES.includes(prefs.frameStyle);
       section.style.setProperty("--lab-frame-style", isNative ? prefs.frameStyle : "solid");
@@ -1382,10 +1382,10 @@
     renderProgress();
   }
 
-  // Turns a contributor's contact string into a URL. Accepts http:// and
+  // Turns a contributor’s contact string into a URL. Accepts http:// and
   // https:// as typed, e-mail addresses, and bare domains with or without
   // www and with or without a path ("pterodactyl.supplies", "example.com/me").
-  // Bare domains get https:// since that's what a browser's address bar
+  // Bare domains get https:// since that’s what a browser’s address bar
   // would try first. Anything else — a handle, a phone number, free text —
   // returns null and is simply not linked.
   function contactHref(raw) {
@@ -1401,7 +1401,7 @@
 
   // What to print for a link: host plus path, so a profile reads
   // "instagram.com/dima.photos" rather than a bare "instagram.com" that
-  // doesn't say whose account it is. Only the scheme and a leading www are
+  // doesn’t say whose account it is. Only the scheme and a leading www are
   // dropped; long paths are truncated rather than hidden.
   const MAX_LABEL = 42;
 
@@ -1425,9 +1425,9 @@
   //   { href, label } — a real address, shown as a short readable link
   //   { text }        — a handle or similar, shown as plain text
   //   null            — nothing worth showing
-  // Anything still wearing a URL scheme we don't trust (javascript:, data:)
-  // is dropped outright rather than printed: it's either junk or a trick,
-  // and neither belongs under someone's photo.
+  // Anything still wearing a URL scheme we don’t trust (javascript:, data:)
+  // is dropped outright rather than printed: it’s either junk or a trick,
+  // and neither belongs under someone’s photo.
   function contactDisplay(raw) {
     const value = String(raw || "").trim();
     if (!value) return null;
@@ -1440,10 +1440,10 @@
     return { text: value };
   }
 
-  // The link shown next to the contributor's name. The visible label is the
-  // domain (or e-mail address), so people can see where they're going before
+  // The link shown next to the contributor’s name. The visible label is the
+  // domain (or e-mail address), so people can see where they’re going before
   // they click; the full URL rides along in the title. Outbound links get
-  // noopener/noreferrer, plus nofollow/ugc so the gallery can't be farmed
+  // noopener/noreferrer, plus nofollow/ugc so the gallery can’t be farmed
   // for SEO.
   function contactNode(display) {
     if (display.text) return document.createTextNode(display.text);
@@ -1461,7 +1461,7 @@
   // Where a picture goes when clicked: its own page, everywhere. This used
   // to open the raw file in a new tab, which left a picture with nothing
   // around it and no way back to the gallery. The file is still one click
-  // further on, from "open the file" on the picture's page.
+  // further on, from "open the file" on the picture’s page.
   function photoLink(link, p) {
     link.href = photoHref(p);
   }
@@ -1503,7 +1503,7 @@
 
     const bits = [];
     if (opts.caption) {
-      // the caption already names the photo's numbers — no "marked" bit
+      // the caption already names the photo’s numbers — no "marked" bit
     } else if (currentN != null) {
       const alsoOn = (p.numbers || []).filter((x) => x !== currentN);
       if (alsoOn.length) bits.push(`also on ${alsoOn.join(", ")}`);
@@ -1543,7 +1543,7 @@
       undo.textContent = "[remove]";
       undo.addEventListener("click", (e) => {
         e.preventDefault();
-        if (confirm("Remove this picture? This can't be undone.")) {
+        if (confirm("Remove this picture? This can’t be undone.")) {
           undoUpload(p.key, undo);
         }
       });
@@ -1556,7 +1556,7 @@
   }
 
   function renderDetail(n, narrow = false) {
-    // prev/next keep whichever width you're browsing in; wide is the plain
+    // prev/next keep whichever width you’re browsing in; wide is the plain
     // "#/42" form now, so only the narrow variant needs a suffix
     const numberHref = (x) => (narrow ? `#/${x}/narrow` : `#/${x}`);
     document.title = `numberwang (${n})`;
@@ -1643,7 +1643,7 @@
     } else {
       const empty = document.createElement("div");
       empty.className = "no-photos";
-      empty.textContent = "Nothing here yet — numbers that don't fit 1–100 land here.";
+      empty.textContent = "Nothing here yet — numbers that don’t fit 1–100 land here.";
       section.appendChild(empty);
     }
 
@@ -1689,7 +1689,7 @@
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {
-      /* storage blocked — the choice just won't survive a reload */
+      /* storage blocked — the choice just won’t survive a reload */
     }
     applyTheme(theme);
   }
@@ -1711,7 +1711,7 @@
     btn.type = "button";
     btn.className = "theme-switch";
     // a switch rather than a link: it reports its own on/off state, so a
-    // screen reader doesn't have to infer it from the wording
+    // screen reader doesn’t have to infer it from the wording
     btn.setAttribute("role", "switch");
 
     const sync = () => {
@@ -1734,8 +1734,8 @@
 
   // ---- 404 (#/404) ----
   // A number page like any other, except nothing links to it from the grid,
-  // and the site's 404.html sends every unknown address here. The pictures
-  // people have tagged 404 are the page's own illustration.
+  // and the site’s 404.html sends every unknown address here. The pictures
+  // people have tagged 404 are the page’s own illustration.
   function renderNotFound() {
     document.title = "numberwang (404)";
     setWordmark("Give or Take 404");
@@ -1779,17 +1779,17 @@
     note.className = "gallery-meta";
     note.style.textAlign = "center";
     note.style.marginTop = "24px";
-    note.textContent = "Whatever you were looking for isn't here. The numbers are.";
+    note.textContent = "Whatever you were looking for isn’t here. The numbers are.";
     section.appendChild(note);
 
     app.replaceChildren(section);
     renderProgress();
   }
 
-  // ---- one picture's own page (#/p/<id>) ----
+  // ---- one picture’s own page (#/p/<id>) ----
   // Everything the gallery knows about a single photo, in one place, with the
   // share controls. Reached by clicking a picture on the trial pages
-  // (#/all-share, #/<n>/share), and it's what a shared link lands on.
+  // (#/all-share, #/<n>/share), and it’s what a shared link lands on.
 
   // Whether this browser can hand a file to another app at all. Probed with a
   // throwaway file, because canShare() answers per payload, not per browser —
@@ -1851,14 +1851,14 @@
     const main = bracketLink(shareable ? "[share the picture]" : "[download the picture]", async (a) => {
       const ready = file || (await filePromise);
       if (!ready) {
-        a.textContent = "[couldn't fetch the picture]";
+        a.textContent = "[couldn’t fetch the picture]";
         return;
       }
       if (shareable) {
         try {
-          // Telegram turns `text` into the picture's caption, so the number,
+          // Telegram turns `text` into the picture’s caption, so the number,
           // the finder and a way back travel with it. Instagram ignores
-          // everything but the file, which is why the caption can't be the
+          // everything but the file, which is why the caption can’t be the
           // only place the link lives. Anything that refuses the combined
           // payload still gets the picture on its own.
           const withText = { files: [ready], text: shareCaption(p) };
@@ -1927,7 +1927,7 @@
       section.appendChild(back);
       const gone = document.createElement("div");
       gone.className = "no-photos";
-      gone.textContent = "That picture isn't here any more.";
+      gone.textContent = "That picture isn’t here any more.";
       section.appendChild(gone);
       app.replaceChildren(section);
       renderProgress();
@@ -1982,7 +1982,7 @@
 
       // A second pair, in the masthead, for narrow screens — where arrows
       // beside the picture would be taking width the photograph needs. Only
-      // ever one pair is displayed; the other is display:none, so it's out of
+      // ever one pair is displayed; the other is display:none, so it’s out of
       // the accessibility tree rather than read twice.
       const bar = document.createElement("div");
       bar.className = "photo-steps";
@@ -1999,7 +1999,7 @@
     caption.appendChild(numbersCaption(photo));
     item.appendChild(caption);
 
-    // "5 of 5 on 5" — this picture's place among the ones filed under its own
+    // "5 of 5 on 5" — this picture’s place among the ones filed under its own
     // number. The arrows walk the whole collection, so this is the only thing
     // saying where you are inside a number.
     const homeNumber = photo.numbers[0];
@@ -2045,9 +2045,9 @@
         editOwnContact(photo, a);
       }));
       ownerRow.appendChild(bracketLink("[remove]", async (a) => {
-        if (!confirm("Remove this picture? This can't be undone.")) return;
+        if (!confirm("Remove this picture? This can’t be undone.")) return;
         await undoUpload(photo.key, a);
-        // this page is about a picture that no longer exists — don't sit on it
+        // this page is about a picture that no longer exists — don’t sit on it
         if (!allEntries().some((e) => e.key === photo.key)) location.hash = home;
       }));
       item.appendChild(ownerRow);
@@ -2061,7 +2061,7 @@
   // ---- "people" page (unlisted, #/people) ----
   // Groups every picture by contributor. A method number identifies a person
   // better than a name does — names repeat and get typed differently — so
-  // it's the grouping key whenever it's present, with the name as fallback.
+  // it’s the grouping key whenever it’s present, with the name as fallback.
   function groupPeople() {
     const people = new Map();
     for (const p of allEntries()) {
@@ -2267,7 +2267,7 @@
 
     const heading = document.createElement("h2");
     heading.className = "terms-heading";
-    heading.textContent = "what's actually in this photo";
+    heading.textContent = "what’s actually in this photo";
     section.appendChild(heading);
 
     const blurb = document.createElement("p");
@@ -2280,7 +2280,7 @@
     input.type = "file";
     input.className = "exif-check-input";
     // deliberately unfiltered: whichever picker this opens is part of what
-    // we're testing, and the answer may differ between them
+    // we’re testing, and the answer may differ between them
     section.appendChild(input);
 
     const actions = document.createElement("p");
@@ -2364,7 +2364,7 @@
     renderProgress();
 
     adminTokenValid(sessionStorage.getItem(ADMIN_TOKEN_KEY) || "").then((ok) => {
-      // the check is async — don't stomp a view they've navigated to since
+      // the check is async — don’t stomp a view they’ve navigated to since
       if (location.hash !== "#/people") return;
       if (ok) renderPeopleTable();
       else renderPeopleLock();
@@ -2420,7 +2420,7 @@
       const ok = await adminTokenValid(value);
       button.disabled = false;
       if (!ok) {
-        err.textContent = "That token isn't right.";
+        err.textContent = "That token isn’t right.";
         input.select();
         return;
       }
@@ -2617,7 +2617,7 @@
     const img = document.createElement("img");
     img.loading = "lazy";
     // Short alt: enough for a screen reader to identify the picture, but it
-    // won't splash the contributor's details across the page if the image
+    // won’t splash the contributor’s details across the page if the image
     // fails to load — the full summary stays in the tooltip.
     img.alt = `Picture of ${p.numbers.join(", ")}`;
     img.src = imgUrl(p.key);
@@ -2657,7 +2657,7 @@
       try {
         localStorage.setItem(BOARD_KEY, JSON.stringify(layout));
       } catch {
-        /* storage full or blocked — the arrangement just won't persist */
+        /* storage full or blocked — the arrangement just won’t persist */
       }
     };
 
@@ -2758,7 +2758,7 @@
       img.loading = "lazy";
       img.alt = `Picture of ${p.numbers.join(", ")}`;
       img.src = imgUrl(p.key);
-      img.draggable = false; // otherwise the browser's own image-drag hijacks it
+      img.draggable = false; // otherwise the browser’s own image-drag hijacks it
       link.appendChild(img);
       el.appendChild(link);
 
@@ -2816,7 +2816,7 @@
       el.addEventListener("pointerup", finish);
       el.addEventListener("pointercancel", finish);
 
-      // a drag that happens to end on the picture shouldn't open it as well
+      // a drag that happens to end on the picture shouldn’t open it as well
       link.addEventListener("click", (e) => {
         if (suppressClick) {
           e.preventDefault();
@@ -2889,7 +2889,7 @@
   // Options:
   //   mode          "full" (details under each picture) | "plain" (nothing)
   //                 | "numbers" (number links only)
-  //   wide          drop the page's max-width, like the grid page
+  //   wide          drop the page’s max-width, like the grid page
   //   gapControl    give the gutter its own slider instead of auto-scaling
   //   fixedGap      pin the gutter to one value, with no control at all
   //   numbersToggle offer a checkbox for showing the numbers under pictures
@@ -2915,7 +2915,7 @@
       { sort: "added", dir: "desc", width: 220, gap: 36, showNumbers: false },
       loadAllPrefs()
     );
-    // With the checkbox in play the captions follow it; otherwise the page's
+    // With the checkbox in play the captions follow it; otherwise the page’s
     // own mode decides.
     const effectiveMode = () =>
       numbersToggle ? (prefs.showNumbers ? "numbers" : "plain") : mode;
@@ -2984,7 +2984,7 @@
     sizeRange.min = "60";
     sizeRange.max = String(maxWidth);
     sizeRange.step = "10";
-    // a stored size from a page with a lower ceiling shouldn't sit off-scale
+    // a stored size from a page with a lower ceiling shouldn’t sit off-scale
     prefs.width = Math.min(prefs.width, maxWidth);
     sizeRange.value = String(prefs.width);
     sizeLabel.appendChild(sizeRange);
@@ -3038,7 +3038,7 @@
     section.appendChild(gallery);
 
     // Missing "date found" always sorts last, in either direction — an
-    // unknown date isn't older or newer than a known one, just unknown.
+    // unknown date isn’t older or newer than a known one, just unknown.
     const sortKeys = {
       added: (p) => new Date(p.uploaded).getTime(),
       found: (p) => (p.foundAt ? new Date(p.foundAt).getTime() : null),
@@ -3163,7 +3163,7 @@
       section.appendChild(empty);
     }
 
-    // layout() measures the gallery's width, so it can only run once the
+    // layout() measures the gallery’s width, so it can only run once the
     // section is actually in the document.
     app.replaceChildren(section);
     if (entries.length) rebuild();
@@ -3177,7 +3177,7 @@
   // there is no error to explain. List fields also allow commas and spaces.
   function restrictToDigits(input, { list = false } = {}) {
     const banned = list ? /[^0-9,\s]/g : /[^0-9]/g;
-    // A numeric keypad would be nicer on mobile, but iOS's numeric pad has no
+    // A numeric keypad would be nicer on mobile, but iOS’s numeric pad has no
     // comma key — so only single-value fields get one.
     if (!list) input.inputMode = "numeric";
     input.addEventListener("input", () => {
@@ -3254,7 +3254,7 @@
     datalist.id = listId;
     block.appendChild(datalist);
 
-    const { wrap, checkbox } = buildCheckboxRow("use photo's location", "f-location-metadata");
+    const { wrap, checkbox } = buildCheckboxRow("use photo’s location", "f-location-metadata");
     block.appendChild(wrap);
 
     input.disabled = true;
@@ -3286,7 +3286,7 @@
     label.appendChild(input);
     block.appendChild(label);
 
-    const { wrap, checkbox } = buildCheckboxRow("use photo's date", "f-found-at-metadata");
+    const { wrap, checkbox } = buildCheckboxRow("use photo’s date", "f-found-at-metadata");
     block.appendChild(wrap);
 
     input.disabled = true;
@@ -3356,7 +3356,7 @@
     };
   }
 
-  // Required consent checkbox — placed right above each form's submit button.
+  // Required consent checkbox — placed right above each form’s submit button.
   function buildConsentField() {
     const wrap = document.createElement("label");
     wrap.className = "checkbox-label consent-label";
@@ -3525,7 +3525,7 @@
     // extension rather than silently dropping the file.
     const files = [...fileList].filter((f) => f.type.startsWith("image/") || looksHeic(f));
     if (!files.length) {
-      setStatus(status, "err", "That doesn't look like an image.");
+      setStatus(status, "err", "That doesn’t look like an image.");
       return false;
     }
     if (!numbers || !numbers.length) {
@@ -3557,13 +3557,13 @@
       setStatus(status, "", `Uploading ${done + 1} of ${files.length}…`);
       try {
         const blob = await shrinkImage(file);
-        // shrinkImage hands the original back when it couldn't decode it. For
+        // shrinkImage hands the original back when it couldn’t decode it. For
         // HEIC that means this browser has no decoder (Chrome, Firefox, Edge
         // — only Safari does), and uploading it raw would store a picture
         // almost nobody could see. Say so plainly instead.
         if (blob === file && looksHeic(file)) {
           throw new Error(
-            "this browser can't read HEIC photos — open the site in Safari, or set the camera to \"Most Compatible\""
+            "this browser can’t read HEIC photos — open the site in Safari, or set the camera to \"Most Compatible\""
           );
         }
         const form = new FormData();
@@ -3617,8 +3617,8 @@
   }
 
   // Downscale to max 1600px on the long edge and re-encode as JPEG,
-  // so phone photos don't eat storage. Falls back to the original file
-  // if the browser can't decode it on a canvas.
+  // so phone photos don’t eat storage. Falls back to the original file
+  // if the browser can’t decode it on a canvas.
   function looksHeic(file) {
     return /^image\/hei[cf]$/i.test(file.type || "") || /\.hei[cf]$/i.test(file.name || "");
   }
@@ -3702,7 +3702,7 @@
     dialog.appendChild(numberGuessHint);
 
     // Only overwrite the number field with a photo guess if the contributor
-    // hasn't already typed their own value — a guess should never clobber
+    // hasn’t already typed their own value — a guess should never clobber
     // something the person deliberately entered.
     let numberTouched = false;
     numberInput.addEventListener("input", () => { numberTouched = true; });
@@ -3729,7 +3729,7 @@
         // not as a frozen form. Typing is still allowed and always wins.
         numberInput.value = "";
         numberInput.dispatchEvent(new Event("input"));
-        numberTouched = false; // that clear was ours, not the contributor's
+        numberTouched = false; // that clear was ours, not the contributor’s
         numberInput.placeholder = "reading the photo…";
         numberGuessHint.textContent = "trying to read the number from the photo — or just type it";
       }
@@ -3740,13 +3740,13 @@
         // Whatever was there before (including the next-empty-slot default
         // openModal fills in) is just as likely to be wrong as no answer at
         // all, so a failed guess leaves the field empty instead of showing
-        // a number that looks like an answer but isn't one.
+        // a number that looks like an answer but isn’t one.
         numberInput.value = guess || "";
         numberInput.dispatchEvent(new Event("input"));
         numberTouched = false; // programmatic fill/clear — still overridable by a later guess
         numberGuessHint.textContent = guess
           ? `guessed "${guess}" from the photo — double check it`
-          : "couldn't read a number from this photo — enter it yourself";
+          : "couldn’t read a number from this photo — enter it yourself";
       } else if (!wasTouched) {
         numberGuessHint.textContent = "";
       }
@@ -3829,7 +3829,7 @@
   }
 
   // ---- "report a bug" ----
-  // Split in two and joined at runtime so the address isn't sitting in the
+  // Split in two and joined at runtime so the address isn’t sitting in the
   // page source for address-harvesting crawlers to scrape. Fill these in
   // with a project-only address — not a personal or work inbox.
   const BUG_EMAIL_USER = "reportnumbers";
@@ -3882,6 +3882,6 @@
   loadPhotos()
     .then(render)
     .catch((err) => {
-      app.innerHTML = `<p class="error">Couldn't reach the picture API (${err.message}).<br>Check API_BASE in config.js.</p>`;
+      app.innerHTML = `<p class="error">Couldn’t reach the picture API (${err.message}).<br>Check API_BASE in config.js.</p>`;
     });
 })();

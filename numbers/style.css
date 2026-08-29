@@ -1,5 +1,18 @@
 /* "Give or Take 100" — visual system per design handoff v12.
-   Times New Roman, pure black/white, one red accent, no radius/shadow/animation. */
+   DD Grotesk, pure black/white, one red accent, no radius/shadow/animation. */
+
+/* DD Grotesk by Keith DD — dypedaces.com. One weight, used for everything.
+   It carries 171 glyphs: Latin, Cyrillic, digits, arrows and curly quotes.
+   A handful of characters the site uses aren't in it — the middot
+   separator, ∞, %, and accented Latin like é or ș — and the browser draws
+   those from the fallback stack below, one glyph at a time. So the stack is
+   a neutral grotesque rather than a serif: a stray fallback dot or accent
+   then sits quietly instead of announcing itself. */
+@font-face {
+  font-family: "DD Grotesk";
+  src: url("fonts/dd-grotesk.otf") format("opentype");
+  font-display: swap;
+}
 
 :root {
   --ink:      #000000;
@@ -12,8 +25,11 @@
   --hover-bg: #eeeeee;
   --dot:      rgba(0, 0, 0, 0.22);
 
-  --serif: "Times New Roman", Times, serif;
-  --mono:  "Courier New", monospace;
+  /* Both slots are the same face now. The two names are kept because the
+     whole stylesheet is wired through them, so a future split costs one
+     line rather than a sweep. */
+  --serif: "DD Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono:  "DD Grotesk", "Helvetica Neue", Arial, sans-serif;
   --number-font: var(--serif);
 
   --content-max: 1200px;
