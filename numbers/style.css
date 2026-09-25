@@ -311,6 +311,12 @@ body.view-grid main { max-width: none; }
   margin-top: 4px;
 }
 
+/* A number page is about one number, so it gets to say so: the wordmark and
+   the number itself run at twice their usual size. Scoped to view-detail, so
+   misc and 404 — which share these classes — keep theirs. */
+body.view-detail .wm { font-size: 64px; }
+body.view-detail .detail-number { font-size: 96px; }
+
 #detail-gallery, #misc-gallery {
   column-width: 220px;
   column-gap: 24px;
