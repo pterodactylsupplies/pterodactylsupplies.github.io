@@ -129,7 +129,7 @@ body.view-wide .site-footer { max-width: none; }
 }
 
 .wm {
-  font-size: 32px;
+  font-size: 64px;
   font-weight: bold;
   color: var(--ink);
   text-decoration: none;
@@ -311,10 +311,8 @@ body.view-grid main { max-width: none; }
   margin-top: 4px;
 }
 
-/* A number page is about one number, so it gets to say so: the wordmark and
-   the number itself run at twice their usual size. Scoped to view-detail, so
-   misc and 404 — which share these classes — keep theirs. */
-body.view-detail .wm { font-size: 64px; }
+/* A number page is about one number, so it gets to say so. Scoped to
+   view-detail: misc and 404 share this class and keep the smaller size. */
 body.view-detail .detail-number { font-size: 96px; }
 
 #detail-gallery, #misc-gallery {
