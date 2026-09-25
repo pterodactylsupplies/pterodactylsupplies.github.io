@@ -128,23 +128,12 @@ body.view-wide .site-footer { max-width: none; }
   gap: 12px 24px;
 }
 
-/* The tagline is set to span the window. 21.823 is the width of "The Game
-   Where We Collect Numbers" in DD Grotesk per pixel of font size, measured;
-   dividing the available width by a slightly larger number leaves a couple
-   of percent so a scrollbar or the fallback face can't push it to a second
-   line. Below about 760px the max() floor takes over and it settles at a
-   readable 32px, where it wraps to two lines instead of shrinking away. */
 .wm {
-  font-size: max(32px, calc((100vw - 48px) / 22.3));
-  line-height: 1.1;
+  font-size: 32px;
   font-weight: bold;
   color: var(--ink);
   text-decoration: none;
 }
-
-/* "Give or Take 42" is under half the length of the tagline, so the same
-   treatment would tower over the page. It keeps the old fixed size. */
-.wm.wm-short { font-size: 32px; }
 
 .wm:hover { background: var(--hover-bg); text-decoration: none; }
 
