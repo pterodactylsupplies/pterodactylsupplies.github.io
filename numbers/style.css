@@ -97,6 +97,8 @@ a:hover { text-decoration: underline; }
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
+  /* tight below the wordmark: the title and the three lines under it read
+     as one block rather than separate rows */
   padding: 24px 24px 12px;
   position: relative;
 }
@@ -142,13 +144,15 @@ body.view-wide .site-footer { max-width: none; }
   color: var(--ink-2);
 }
 
+/* One column at the left margin: the tally, the donation line under it,
+   and the button it's asking about under that. The same at every width, so
+   there's no breakpoint to keep in step. */
 .mast-row2 {
-  margin-top: 8px;
+  margin-top: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .mast-row2-left {
@@ -317,19 +321,6 @@ body.view-detail .detail-number { font-size: 96px; }
 
 /* The donation line sits directly above the button it's asking about,
    both pushed to the right edge opposite the tally. */
-.mast-cta-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-/* Once the row wraps there's no tally to sit opposite, so right-aligning
-   only leaves the button floating in from the margin. */
-@media (max-width: 700px) {
-  .mast-cta-stack { align-items: flex-start; }
-}
-
 #detail-gallery, #misc-gallery {
   column-width: 220px;
   column-gap: 24px;
