@@ -33,6 +33,20 @@
   --number-font: var(--serif);
 
   --content-max: 1200px;
+
+  /* DD Grotesk ships one weight, and its own name table calls it Light.
+     Asked for bold, a browser manufactures one by fattening those outlines —
+     45% more ink from the same curves, which piles up where strokes meet and
+     makes a geometric face look broken. This forbids that. The bold rules
+     below stay where they are: if a real second weight ever arrives, they
+     start working on their own.
+
+     "style" rather than "none" because obliquing is still allowed — comments
+     are set in italic and there's no italic cut either, but a slant is a far
+     gentler transform than an embolden, and it's what tells a comment apart
+     from the text around it. */
+  font-synthesis: style;
+  -webkit-font-synthesis: style;
 }
 
 /* Night mode. The whole system is these tokens, so turning the page over is

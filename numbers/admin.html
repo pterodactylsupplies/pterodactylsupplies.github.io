@@ -15,6 +15,9 @@
     :root {
       --ink: #000; --ink-2: #555; --red: #d40000; --border: #000; --bg: #fff; --hover-bg: #eee;
       --mono: "DD Grotesk", "Helvetica Neue", Arial, sans-serif;
+      /* one weight only — never let the browser fake a bold */
+      font-synthesis: style;
+      -webkit-font-synthesis: style;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: var(--mono); color: var(--ink); background: var(--bg); font-size: 14px; }
