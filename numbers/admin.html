@@ -192,7 +192,7 @@
       if (p.uploaded) metaParts.push(`published ${new Date(p.uploaded).toLocaleString()}`);
       const meta = document.createElement("div");
       meta.className = "card-meta";
-      meta.textContent = metaParts.join(" · ");
+      meta.textContent = metaParts.join(" • ");
       body.appendChild(meta);
 
       if (p.comments) {

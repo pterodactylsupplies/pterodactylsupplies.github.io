@@ -958,7 +958,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
 
     const heading = document.createElement("h2");
@@ -1097,7 +1097,7 @@
     rememberSeen(newestUploadedAt(entries));
 
     let html = `<strong>${collected}</strong> of 100 collected`;
-    html += ` &middot; <a href="#/all"><strong>${total}</strong> pics</a>`;
+    html += ` &bull; <a href="#/all"><strong>${total}</strong> pics</a>`;
     if (added > 0) {
       // added since the last visit — the title spells out what "+3" means
       html += ` <span class="progress-new" title="added since your last visit">(+${added})</span>`;
@@ -1497,7 +1497,7 @@
     // Contact sits immediately after the name, as its own item.
     const contact = contactDisplay(p.contact);
     if (contact) {
-      meta.appendChild(document.createTextNode(" · "));
+      meta.appendChild(document.createTextNode(" • "));
       meta.appendChild(contactNode(contact));
     }
 
@@ -1513,7 +1513,7 @@
     if (p.location) bits.push(p.location);
     if (p.foundAt) bits.push(`found ${formatFoundAt(p.foundAt)}`);
     bits.push(`published ${relativeTime(p.uploaded)}`);
-    meta.appendChild(document.createTextNode(` · ${bits.join(" · ")}`));
+    meta.appendChild(document.createTextNode(` • ${bits.join(" • ")}`));
     item.appendChild(meta);
 
     if (p.comments) {
@@ -1569,7 +1569,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
 
     const topRow = document.createElement("div");
     topRow.className = "page-top-row";
@@ -1583,12 +1583,12 @@
     const navRow = document.createElement("div");
     navRow.className = "detail-nav-row";
     navRow.innerHTML = `
-      <a href="${numberHref(prevN)}">&larr; ${prevN}</a>
+      <a href="${numberHref(prevN)}">&laquo; ${prevN}</a>
       <div class="detail-center">
         <div class="detail-number">${n}</div>
         <div class="detail-meta">${photos.length} picture${photos.length === 1 ? "" : "s"} on file</div>
       </div>
-      <a href="${numberHref(nextN)}">${nextN} &rarr;</a>`;
+      <a href="${numberHref(nextN)}">${nextN} &raquo;</a>`;
     section.appendChild(navRow);
 
     if (photos.length) {
@@ -1620,7 +1620,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
 
     const navRow = document.createElement("div");
@@ -1748,7 +1748,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
 
     const topRow = document.createElement("div");
     topRow.className = "page-top-row";
@@ -1820,12 +1820,12 @@
   }
 
   // What rides along with a shared picture, where the target accepts text:
-  // "42 · found by Sasha · Tel-Aviv, Israel" and the link back.
+  // "42 • found by Sasha • Tel-Aviv, Israel" and the link back.
   function shareCaption(p) {
     const bits = [p.numbers.join(", ")];
     if (p.submitter) bits.push(`found by ${p.submitter}`);
     if (p.location) bits.push(p.location);
-    return `${bits.join(" · ")}\n${shareUrl(p)}`;
+    return `${bits.join(" • ")}\n${shareUrl(p)}`;
   }
 
   function buildShareRow(p) {
@@ -1923,7 +1923,7 @@
       const back = document.createElement("a");
       back.className = "back-link";
       back.href = "#";
-      back.textContent = "← back to grid";
+      back.textContent = "« back to grid";
       section.appendChild(back);
       const gone = document.createElement("div");
       gone.className = "no-photos";
@@ -1942,7 +1942,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = home;
-    back.textContent = onGrid.length ? `← back to ${onGrid[0]}` : "← back to misc";
+    back.textContent = onGrid.length ? `« back to ${onGrid[0]}` : "« back to misc";
     section.appendChild(back);
 
     const item = document.createElement("div");
@@ -1969,7 +1969,7 @@
         a.title = `${direction === "prev" ? "Previous" : "Next"} picture: ${photoId(target)}`;
         const arrow = document.createElement("span");
         arrow.className = "photo-step-arrow";
-        arrow.textContent = direction === "prev" ? "←" : "→";
+        arrow.textContent = direction === "prev" ? "«" : "»";
         const name = document.createElement("span");
         name.className = "photo-step-name";
         name.textContent = photoId(target);
@@ -2018,14 +2018,14 @@
     meta.appendChild(document.createTextNode(photo.theirNumber ? `${name} (${photo.theirNumber})` : name));
     const contact = contactDisplay(photo.contact);
     if (contact) {
-      meta.appendChild(document.createTextNode(" · "));
+      meta.appendChild(document.createTextNode(" • "));
       meta.appendChild(contactNode(contact));
     }
     const bits = [];
     if (photo.location) bits.push(photo.location);
     if (photo.foundAt) bits.push(`found ${formatFoundAt(photo.foundAt)}`);
     bits.push(`published ${relativeTime(photo.uploaded)}`);
-    meta.appendChild(document.createTextNode(` · ${bits.join(" · ")}`));
+    meta.appendChild(document.createTextNode(` • ${bits.join(" • ")}`));
     item.appendChild(meta);
 
     if (photo.comments) {
@@ -2262,7 +2262,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
 
     const heading = document.createElement("h2");
@@ -2377,7 +2377,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
     return section;
   }
@@ -2544,7 +2544,7 @@
 
       const placesCell = document.createElement("td");
       placesCell.className = "wrap";
-      placesCell.textContent = [...person.locations].join(" · ") || "—";
+      placesCell.textContent = [...person.locations].join(" • ") || "—";
       tr.appendChild(placesCell);
 
       const firstCell = document.createElement("td");
@@ -2557,7 +2557,7 @@
 
       const commentsCell = document.createElement("td");
       commentsCell.className = "wrap";
-      commentsCell.textContent = person.comments.join(" · ") || "—";
+      commentsCell.textContent = person.comments.join(" • ") || "—";
       tr.appendChild(commentsCell);
 
       tbody.appendChild(tr);
@@ -2669,7 +2669,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
 
     const controls = document.createElement("div");
@@ -2928,7 +2928,7 @@
     const back = document.createElement("a");
     back.className = "back-link";
     back.href = "#";
-    back.textContent = "← back to grid";
+    back.textContent = "« back to grid";
     section.appendChild(back);
 
     const entries = allEntries();
@@ -3465,7 +3465,7 @@
 
     const helper = document.createElement("p");
     helper.className = "upload-helper";
-    helper.textContent = "any picture · published immediately";
+    helper.textContent = "any picture • published immediately";
     panel.appendChild(helper);
     panel.appendChild(fileStatus);
 
