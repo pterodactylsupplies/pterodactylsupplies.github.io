@@ -1673,12 +1673,12 @@
     }
   }
 
-  function systemTheme() {
-    return matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
+  // Light unless someone has asked for dark here. The site is black ink on
+  // white paper with one accent; that is the design, not a preference, so a
+  // reader whose system runs dark still arrives at the real thing and can
+  // switch if they want to.
   function activeTheme() {
-    return storedTheme() || systemTheme();
+    return storedTheme() || "light";
   }
 
   function applyTheme(theme) {

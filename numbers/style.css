@@ -18,6 +18,9 @@
   --ink:      #000000;
   --ink-2:    #555555;
   --red:      #d40000;
+  /* emphasis, as distinct from danger: red on white, green on the dark
+     theme. Every rule below names one or the other, never a colour. */
+  --accent:   var(--red);
   --link:     #0000ee;
   --border:   #000000;
   --bg:       #ffffff;
@@ -53,19 +56,25 @@
    a matter of restating them — nothing below this block knows which mode it
    is in. Applied by data-theme on <html>; with no choice remembered the
    media query follows the system. */
-/* Nothing here is white: at full strength on black the frames glare and the
-   text buzzes. Type sits at a light grey, the rules and cell frames at a
-   darker one, so the structure recedes behind the pictures the way black
-   lines do on paper. */
+/* Nothing here is white: at full strength the frames glare and the text
+   buzzes. Type sits at a light grey, the rules and cell frames at a darker
+   one, so the structure recedes behind the pictures the way black lines do
+   on paper.
+
+   The green is the accent, standing in for the red the light theme uses —
+   links, the eyebrow, a newly filled number. Red survives only where it
+   means danger rather than emphasis: errors, and removing a picture. */
 :root[data-theme="dark"] {
   --ink:      #cfcfcf;
   --ink-2:    #8a8a8a;
-  --red:      #ff4b4b;
-  --link:     #8ab4ff;
+  --green:    #8ab56f;
+  --red:      #ff6b6b;
+  --accent:   var(--green);
+  --link:     var(--green);
   --border:   #5e5e5e;
-  --bg:       #000000;
-  --cell-bg:  #000000;
-  --hover-bg: #232323;
+  --bg:       #1e1e1e;
+  --cell-bg:  #1e1e1e;
+  --hover-bg: #2a2a2a;
   --dot:      rgba(255, 255, 255, 0.16);
 }
 
@@ -97,8 +106,6 @@ a:hover { text-decoration: underline; }
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
-  /* tight below the wordmark: the title and the three lines under it read
-     as one block rather than separate rows */
   padding: 24px 24px 12px;
   position: relative;
 }
@@ -144,15 +151,13 @@ body.view-wide .site-footer { max-width: none; }
   color: var(--ink-2);
 }
 
-/* One column at the left margin: the tally, the donation line under it,
-   and the button it's asking about under that. The same at every width, so
-   there's no breakpoint to keep in step. */
 .mast-row2 {
-  margin-top: 0;
+  margin-top: 8px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .mast-row2-left {
@@ -165,7 +170,7 @@ body.view-wide .site-footer { max-width: none; }
 
 .progress { font-size: 16px; }
 .progress strong { font-weight: bold; }
-.progress-new { color: var(--red); }
+.progress-new { color: var(--accent); }
 
 .mast-cta {
   font-family: var(--serif);
@@ -299,7 +304,7 @@ body.view-grid main { max-width: none; }
 .detail-eyebrow {
   font-size: 16px;
   font-family: var(--number-font);
-  color: var(--red);
+  color: var(--accent);
 }
 
 .detail-number {
@@ -633,7 +638,7 @@ body.view-photo .mast::after {
 
 .board-item.dragging {
   cursor: grabbing;
-  outline: 1px solid var(--red);
+  outline: 1px solid var(--accent);
 }
 
 .board-item a { display: block; }
