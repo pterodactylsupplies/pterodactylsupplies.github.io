@@ -853,7 +853,12 @@
 
   function setWordmark(text) {
     const wm = document.getElementById("home-link");
-    if (wm) wm.textContent = text;
+    if (!wm) return;
+    wm.textContent = text;
+    // The tagline is set to span the window; "Give or Take 42" is less than
+    // half as long and would tower at that size, so it's flagged for the
+    // fixed smaller one.
+    wm.classList.toggle("wm-short", text.startsWith("Give or Take"));
   }
 
   function render() {

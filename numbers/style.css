@@ -128,12 +128,23 @@ body.view-wide .site-footer { max-width: none; }
   gap: 12px 24px;
 }
 
+/* The tagline is set to span the window. 21.823 is the width of "The Game
+   Where We Collect Numbers" in DD Grotesk per pixel of font size, measured;
+   dividing the available width by a slightly larger number leaves a couple
+   of percent so a scrollbar or the fallback face can't push it to a second
+   line. Below about 760px the max() floor takes over and it settles at a
+   readable 32px, where it wraps to two lines instead of shrinking away. */
 .wm {
-  font-size: 64px;
+  font-size: max(32px, calc((100vw - 48px) / 22.3));
+  line-height: 1.1;
   font-weight: bold;
   color: var(--ink);
   text-decoration: none;
 }
+
+/* "Give or Take 42" is under half the length of the tagline, so the same
+   treatment would tower over the page. It keeps the old fixed size. */
+.wm.wm-short { font-size: 32px; }
 
 .wm:hover { background: var(--hover-bg); text-decoration: none; }
 
@@ -314,6 +325,21 @@ body.view-grid main { max-width: none; }
 /* A number page is about one number, so it gets to say so. Scoped to
    view-detail: misc and 404 share this class and keep the smaller size. */
 body.view-detail .detail-number { font-size: 96px; }
+
+/* The donation line sits directly above the button it's asking about,
+   both pushed to the right edge opposite the tally. */
+.mast-cta-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* Once the row wraps there's no tally to sit opposite, so right-aligning
+   only leaves the button floating in from the margin. */
+@media (max-width: 700px) {
+  .mast-cta-stack { align-items: flex-start; }
+}
 
 #detail-gallery, #misc-gallery {
   column-width: 220px;
