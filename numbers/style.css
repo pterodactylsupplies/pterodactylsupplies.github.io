@@ -28,6 +28,13 @@
   --hover-bg: #eeeeee;
   --dot:      rgba(0, 0, 0, 0.22);
 
+  /* Two weights of line, kept apart because they do different jobs:
+     --frame is the box drawn round a cell, a picture, a button or a field;
+     --rule is the single separator under the masthead, over the footer and
+     beneath a page's heading. Either can go to 0 on its own. */
+  --frame: 2px;
+  --rule:  2px;
+
   /* Both slots are the same face now. The two names are kept because the
      whole stylesheet is wired through them, so a future split costs one
      line rather than a sweep. */
@@ -56,15 +63,40 @@
    a matter of restating them — nothing below this block knows which mode it
    is in. Applied by data-theme on <html>; with no choice remembered the
    media query follows the system. */
-/* Nothing here is white: at full strength the frames glare and the text
-   buzzes. Type sits at a light grey, the rules and cell frames at a darker
-   one, so the structure recedes behind the pictures the way black lines do
-   on paper.
+/* ---- the other four grounds ---- */
+/* "light" is :root above — white paper, red accent, blue links.
+   Two warmer papers follow, then two dark grounds. On the papers the green
+   is darkened so it still reads; on the dark ones it is lightened.
+
+   Each restates only what changes. The type, the rules and the dot texture
+   carry over from whichever side — light or dark — the ground belongs to. */
+
+:root[data-theme="paper"] {
+  --bg:      #f3f2ee;
+  --cell-bg: #f3f2ee;
+  --green:   #4a7a31;
+  --accent:  var(--green);
+  --link:    var(--green);
+}
+
+:root[data-theme="sand"] {
+  --bg:      #eae8e3;
+  --cell-bg: #eae8e3;
+  --green:   #4a7a31;
+  --accent:  var(--green);
+  --link:    var(--green);
+}
+
+/* Nothing on the dark grounds is white: at full strength the frames glare
+   and the text buzzes. Type sits at a light grey, the rules and cell frames
+   at a darker one, so the structure recedes behind the pictures the way
+   black lines do on paper.
 
    The green is the accent, standing in for the red the light theme uses —
    links, the eyebrow, a newly filled number. Red survives only where it
    means danger rather than emphasis: errors, and removing a picture. */
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-theme="black"] {
   --ink:      #cfcfcf;
   --ink-2:    #8a8a8a;
   --green:    #8ab56f;
@@ -76,6 +108,12 @@
   --cell-bg:  #1e1e1e;
   --hover-bg: #2a2a2a;
   --dot:      rgba(255, 255, 255, 0.16);
+}
+
+:root[data-theme="black"] {
+  --bg:       #000000;
+  --cell-bg:  #000000;
+  --hover-bg: #232323;
 }
 
 /* the grid page ships full-bleed (no max-width anywhere); every other view
@@ -119,7 +157,7 @@ a:hover { text-decoration: underline; }
   left: 24px;
   right: 24px;
   bottom: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 body.view-grid .mast { max-width: none; }
@@ -177,7 +215,7 @@ body.view-wide .site-footer { max-width: none; }
   font-size: 13px;
   color: var(--ink);
   background: var(--cell-bg);
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 6px 12px;
   cursor: pointer;
 }
@@ -216,7 +254,7 @@ body.view-grid main { max-width: none; }
   position: relative;
   display: block;
   aspect-ratio: 1;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   box-sizing: border-box;
   text-decoration: none;
   color: var(--ink);
@@ -286,7 +324,7 @@ body.view-grid main { max-width: none; }
   align-items: center;
   margin-top: 24px;
   padding-bottom: 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   gap: 16px;
 }
 
@@ -345,7 +383,7 @@ body.view-detail .detail-number { font-size: 96px; }
   gap: 16px 24px;
   margin-top: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   font-family: var(--mono);
   font-size: 13px;
 }
@@ -359,7 +397,7 @@ body.view-detail .detail-number { font-size: 96px; }
 .all-controls select {
   font-family: inherit;
   font-size: 13px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--cell-bg);
   color: var(--ink);
   padding: 4px 6px;
@@ -473,7 +511,7 @@ body.view-photo .mast::after {
   bottom: auto;
   top: 0;
   border-bottom: none;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 /* Where this picture sits among its number's — the old header's second line,
@@ -509,7 +547,7 @@ body.view-photo .mast::after {
   width: 40px;
   height: 20px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--cell-bg);
   cursor: pointer;
 }
@@ -604,7 +642,7 @@ body.view-photo .mast::after {
 .share-url {
   font-family: var(--mono);
   font-size: 12px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--cell-bg);
   color: var(--ink);
   padding: 2px 4px;
@@ -614,7 +652,7 @@ body.view-photo .mast::after {
 
 .no-photos {
   margin-top: 48px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 64px 24px;
   text-align: center;
   font-size: 18px;
@@ -652,7 +690,7 @@ body.view-photo .mast::after {
 .board-reset {
   font-family: inherit;
   font-size: 13px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--cell-bg);
   color: var(--ink);
   padding: 4px 10px;
@@ -799,7 +837,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 
 .people-table th,
 .people-table td {
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 6px 10px;
   text-align: left;
   vertical-align: top;
@@ -836,7 +874,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
   line-height: 1.5;
   white-space: pre;
   overflow-x: auto;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 12px;
   margin-top: 12px;
   min-height: 24px;
@@ -856,7 +894,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 .people-lock input {
   font: inherit;
   padding: 6px 8px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--bg);
   color: var(--ink);
   min-width: 240px;
@@ -880,7 +918,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 
 .upload-panel {
   margin-top: 64px;
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -892,7 +930,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 .upload-panel h3 { font-size: 20px; font-weight: bold; margin: 0; }
 
 .dropzone {
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 16px;
   text-align: center;
   cursor: pointer;
@@ -918,7 +956,7 @@ body.lab-font-serif .mast-cta { font-family: var(--serif); }
 .field-label input[type="text"],
 .field-label input[type="date"],
 .field-label textarea {
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 5px 6px;
   font-size: 15px;
   font-family: inherit;
@@ -1027,7 +1065,7 @@ ul.terms-copy li {
 
 .modal {
   background: var(--cell-bg);
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   padding: 20px 24px;
   width: 90%;
   max-width: 400px;
@@ -1060,7 +1098,7 @@ ul.terms-copy li {
 .modal .dropzone { padding: 10px; font-size: 13px; }
 
 .modal-submit {
-  border: 1px solid var(--border);
+  border: var(--frame) solid var(--border);
   background: var(--cell-bg);
   color: var(--ink);
   padding: 8px;
@@ -1079,7 +1117,7 @@ ul.terms-copy li {
   max-width: var(--content-max);
   margin: 16px auto 0;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   text-align: center;
   font-size: 13px;
   color: var(--ink-2);

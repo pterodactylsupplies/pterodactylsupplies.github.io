@@ -1664,10 +1664,16 @@
   // remembered the page follows whatever the system asks for.
   const THEME_KEY = "numbersGallery.theme";
 
+  // The grounds the stylesheet knows: white, two warmer papers, and two
+  // dark ones. The switch only walks between the first and the fourth; the
+  // others are reachable by setting the stored value, which is what the
+  // local theme harness does.
+  const THEMES = ["light", "paper", "sand", "dark", "black"];
+
   function storedTheme() {
     try {
       const value = localStorage.getItem(THEME_KEY);
-      return value === "dark" || value === "light" ? value : null;
+      return THEMES.includes(value) ? value : null;
     } catch {
       return null;
     }
@@ -1699,6 +1705,11 @@
   // you come back to to turn it off.
   const THEME_TRIAL_NUMBER = 42;
 
+  // A ground counts as dark when the switch should read as "on".
+  function isDarkTheme(theme) {
+    return theme === "dark" || theme === "black";
+  }
+
   function buildThemeToggle() {
     const wrap = document.createElement("div");
     wrap.className = "theme-toggle";
@@ -1715,13 +1726,13 @@
     btn.setAttribute("role", "switch");
 
     const sync = () => {
-      const dark = activeTheme() === "dark";
+      const dark = isDarkTheme(activeTheme());
       btn.setAttribute("aria-checked", String(dark));
       btn.setAttribute("aria-label", dark ? "Turn night mode off" : "Turn night mode on");
     };
 
     btn.addEventListener("click", () => {
-      setTheme(activeTheme() === "dark" ? "light" : "dark");
+      setTheme(isDarkTheme(activeTheme()) ? "light" : "dark");
       sync();
     });
 
