@@ -1585,8 +1585,7 @@
     navRow.innerHTML = `
       <a href="${numberHref(prevN)}">&laquo; ${prevN}</a>
       <div class="detail-center">
-        <div class="detail-number">${n}</div>
-        <div class="detail-meta">${photos.length} picture${photos.length === 1 ? "" : "s"} on file</div>
+        <div class="detail-meta">${n}&times;${photos.length}</div>
       </div>
       <a href="${numberHref(nextN)}">${nextN} &raquo;</a>`;
     section.appendChild(navRow);

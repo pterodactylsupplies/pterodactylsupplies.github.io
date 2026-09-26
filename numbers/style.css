@@ -318,12 +318,14 @@ body.view-grid main { max-width: none; }
   color: var(--link);
 }
 
+/* This row used to carry a 48px number, and its spacing was set for that.
+   With only the steps and the count left it needs far less room. */
 .detail-nav-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 24px;
-  padding-bottom: 24px;
+  margin-top: 12px;
+  padding-bottom: 10px;
   border-bottom: var(--rule) solid var(--border);
   gap: 16px;
 }
@@ -369,6 +371,10 @@ body.view-detail .detail-number { font-size: 96px; }
   column-gap: 24px;
   margin-top: 48px;
 }
+
+/* misc and 404 still show a big symbol above their pictures and keep the
+   wider gap; a number page has nothing there now. */
+#detail-gallery { margin-top: 24px; }
 
 @media (max-width: 640px) {
   #detail-gallery, #misc-gallery { column-count: 2; }
