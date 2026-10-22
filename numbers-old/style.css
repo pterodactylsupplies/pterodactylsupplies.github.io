@@ -1,0 +1,1140 @@
+/* "Give or Take 100" — visual system per design handoff v12.
+   DD Grotesk, pure black/white, one red accent, no radius/shadow/animation. */
+
+/* DD Grotesk by Keith DD — dypedaces.com. One weight, used for everything.
+   It carries 171 glyphs: Latin, Cyrillic, digits, arrows and curly quotes.
+   A handful of characters the site uses aren't in it — the middot
+   separator, ∞, %, and accented Latin like é or ș — and the browser draws
+   those from the fallback stack below, one glyph at a time. So the stack is
+   a neutral grotesque rather than a serif: a stray fallback dot or accent
+   then sits quietly instead of announcing itself. */
+@font-face {
+  font-family: "DD Grotesk";
+  src: url("fonts/dd-grotesk.otf") format("opentype");
+  font-display: swap;
+}
+
+:root {
+  --ink:      #000000;
+  --ink-2:    #555555;
+  --red:      #d40000;
+  /* emphasis, as distinct from danger: red on white, green on the dark
+     theme. Every rule below names one or the other, never a colour. */
+  --accent:   var(--red);
+  --link:     #0000ee;
+  --border:   #000000;
+  --bg:       #ffffff;
+  --cell-bg:  #ffffff;
+  --hover-bg: #eeeeee;
+  --dot:      rgba(0, 0, 0, 0.22);
+
+  /* Two weights of line, kept apart because they do different jobs:
+     --frame is the box drawn round a cell, a picture, a button or a field;
+     --rule is the single separator under the masthead, over the footer and
+     beneath a page's heading. Either can go to 0 on its own. */
+  --frame: 2px;
+  --rule:  2px;
+
+  /* Both slots are the same face now. The two names are kept because the
+     whole stylesheet is wired through them, so a future split costs one
+     line rather than a sweep. */
+  --serif: "DD Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono:  "DD Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --number-font: var(--serif);
+
+  --content-max: 1200px;
+
+  /* DD Grotesk ships one weight, and its own name table calls it Light.
+     Asked for bold, a browser manufactures one by fattening those outlines —
+     45% more ink from the same curves, which piles up where strokes meet and
+     makes a geometric face look broken. This forbids that. The bold rules
+     below stay where they are: if a real second weight ever arrives, they
+     start working on their own.
+
+     "style" rather than "none" because obliquing is still allowed — comments
+     are set in italic and there's no italic cut either, but a slant is a far
+     gentler transform than an embolden, and it's what tells a comment apart
+     from the text around it. */
+  font-synthesis: style;
+  -webkit-font-synthesis: style;
+}
+
+/* Night mode. The whole system is these tokens, so turning the page over is
+   a matter of restating them — nothing below this block knows which mode it
+   is in. Applied by data-theme on <html>; with no choice remembered the
+   media query follows the system. */
+/* ---- the other four grounds ---- */
+/* "light" is :root above — white paper, red accent, blue links.
+   Two warmer papers follow, then two dark grounds. On the papers the green
+   is darkened so it still reads; on the dark ones it is lightened.
+
+   Each restates only what changes. The type, the rules and the dot texture
+   carry over from whichever side — light or dark — the ground belongs to. */
+
+:root[data-theme="paper"] {
+  --bg:      #f3f2ee;
+  --cell-bg: #f3f2ee;
+  --green:   #4a7a31;
+  --accent:  var(--green);
+  --link:    var(--green);
+}
+
+:root[data-theme="sand"] {
+  --bg:      #eae8e3;
+  --cell-bg: #eae8e3;
+  --green:   #4a7a31;
+  --accent:  var(--green);
+  --link:    var(--green);
+}
+
+/* Nothing on the dark grounds is white: at full strength the frames glare
+   and the text buzzes. Type sits at a light grey, the rules and cell frames
+   at a darker one, so the structure recedes behind the pictures the way
+   black lines do on paper.
+
+   The green is the accent, standing in for the red the light theme uses —
+   links, the eyebrow, a newly filled number. Red survives only where it
+   means danger rather than emphasis: errors, and removing a picture. */
+:root[data-theme="dark"],
+:root[data-theme="black"] {
+  --ink:      #cfcfcf;
+  --ink-2:    #8a8a8a;
+  --green:    #8ab56f;
+  --red:      #ff6b6b;
+  --accent:   var(--green);
+  --link:     var(--green);
+  --border:   #5e5e5e;
+  --bg:       #1e1e1e;
+  --cell-bg:  #1e1e1e;
+  --hover-bg: #2a2a2a;
+  --dot:      rgba(255, 255, 255, 0.16);
+}
+
+:root[data-theme="black"] {
+  --bg:       #000000;
+  --cell-bg:  #000000;
+  --hover-bg: #232323;
+}
+
+/* the grid page ships full-bleed (no max-width anywhere); every other view
+   (detail, misc) is capped at --content-max, and detail's numbers render in
+   monospace by default while the grid's render in serif. */
+body.view-detail, body.view-misc, body.view-all, body.view-photo { --number-font: var(--mono); }
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  /* fine dots — the site-wide texture */
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+a { color: var(--link); }
+a:hover { text-decoration: underline; }
+
+/* ---------- Masthead ---------- */
+
+.mast {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 24px 24px 12px;
+  position: relative;
+}
+
+/* The rule is drawn inset by the masthead's own padding rather than as a
+   plain border, so it lines up with the content below it — a border would
+   span the padding too and overhang the page's text on both sides. */
+.mast::after {
+  content: "";
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 0;
+  border-bottom: var(--rule) solid var(--border);
+}
+
+body.view-grid .mast { max-width: none; }
+
+/* full-bleed pages: the grid, and the walls that ask for it */
+body.view-wide .mast,
+body.view-wide main,
+body.view-wide .site-footer { max-width: none; }
+
+.mast-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.wm {
+  font-size: 32px;
+  font-weight: bold;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wm:hover { background: var(--hover-bg); text-decoration: none; }
+
+.mast-donations {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.mast-row2 {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.mast-row2-left {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.all-link { font-size: 13px; }
+
+.progress { font-size: 16px; }
+.progress strong { font-weight: bold; }
+.progress-new { color: var(--accent); }
+
+.mast-cta {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--cell-bg);
+  border: var(--frame) solid var(--border);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mast-cta:hover { background: var(--hover-bg); }
+
+main {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+body.view-grid main { max-width: none; }
+
+.loading, .error {
+  text-align: center;
+  padding: 48px 0;
+  color: var(--ink-2);
+}
+
+.error { color: var(--red); }
+
+/* ---------- Grid overview ---------- */
+
+.grid-section {
+  padding: 16px 24px 32px;
+}
+
+.number-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 12px;
+}
+
+.cell {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border: var(--frame) solid var(--border);
+  box-sizing: border-box;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--cell-bg);
+  overflow: hidden;
+}
+
+.cell:hover { background: var(--hover-bg); text-decoration: none; }
+
+.cell.filled img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cell-mark {
+  position: absolute;
+  top: 4px;
+  pointer-events: none;
+}
+
+.cell-mark-plus {
+  left: 4px;
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.cell-mark-plus.cell-mark-empty {
+  color: var(--ink-2);
+}
+
+.cell-mark-count {
+  right: 4px;
+  font-size: 13px;
+  font-family: var(--number-font);
+  color: #ffffff;
+}
+
+.cell-empty-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-family: var(--number-font);
+  color: var(--ink);
+}
+
+/* ---------- Detail page ---------- */
+
+.detail-section {
+  padding: 16px 24px 32px;
+}
+
+.back-link {
+  font-size: 16px;
+  text-decoration: underline;
+  color: var(--link);
+}
+
+/* This row used to carry a 48px number, and its spacing was set for that.
+   With only the steps and the count left it needs far less room. */
+.detail-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-bottom: 10px;
+  border-bottom: var(--rule) solid var(--border);
+  gap: 16px;
+}
+
+.detail-nav-row a {
+  font-size: 18px;
+  color: var(--link);
+  text-decoration: none;
+  font-family: var(--number-font);
+}
+
+.detail-nav-row a:hover { background: var(--hover-bg); text-decoration: none; }
+
+.detail-center { text-align: center; }
+
+.detail-eyebrow {
+  font-size: 16px;
+  font-family: var(--number-font);
+  color: var(--accent);
+}
+
+.detail-number {
+  font-size: 48px;
+  font-weight: bold;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.detail-meta {
+  font-size: 16px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+
+/* A number page is about one number, so it gets to say so. Scoped to
+   view-detail: misc and 404 share this class and keep the smaller size. */
+body.view-detail .detail-number { font-size: 96px; }
+
+/* The donation line sits directly above the button it's asking about,
+   both pushed to the right edge opposite the tally. */
+#detail-gallery, #misc-gallery {
+  column-width: 220px;
+  column-gap: 24px;
+  margin-top: 48px;
+}
+
+/* misc and 404 still show a big symbol above their pictures and keep the
+   wider gap; a number page has nothing there now. */
+#detail-gallery { margin-top: 24px; }
+
+@media (max-width: 640px) {
+  #detail-gallery, #misc-gallery { column-count: 2; }
+}
+
+/* ---------- "all pictures" page ---------- */
+
+.all-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  margin-top: 24px;
+  padding-bottom: 16px;
+  border-bottom: var(--rule) solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.all-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.all-controls select {
+  font-family: inherit;
+  font-size: 13px;
+  border: var(--frame) solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 4px 6px;
+}
+
+.all-controls input[type="range"] {
+  accent-color: var(--ink);
+}
+
+/* live readout beside a slider — fixed width so the controls don't shuffle
+   sideways as the number changes while dragging */
+.range-value {
+  min-width: 5ch;
+  color: var(--ink-2);
+}
+
+/* JS-dealt masonry: N column stacks, items distributed round-robin so the
+   wall reads left-to-right row by row (CSS columns would read top-to-bottom
+   down each column instead). */
+#all-gallery {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.all-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Pictures-only wall: vertical spacing tracks the column gutters so the wall
+   stays even. Two classes deep on purpose — plain .gallery-item sets its own
+   margin-bottom further down the file and would otherwise win on order. */
+.gallery-item.gallery-item-plain { margin-bottom: var(--wall-gap, 12px); }
+
+.gallery-item {
+  break-inside: avoid;
+  margin-bottom: 24px;
+}
+
+/* the image wrapper link only — caption number links must stay inline */
+.gallery-item > a {
+  display: block;
+}
+
+.gallery-item img {
+  display: block;
+  width: 100%;
+}
+
+.gallery-caption {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 8px;
+  font-family: var(--number-font);
+}
+
+.gallery-meta {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.gallery-comment {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 4px;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.owner-row {
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.owner-link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.owner-link:hover { background: var(--hover-bg); }
+
+.undo-link {
+  color: var(--red);
+  text-decoration: none;
+}
+
+.undo-link:hover { background: var(--hover-bg); }
+
+/* ---- one picture's own page (#/p/<id>) ---- */
+/* The picture is what this page is for, so it comes first and the masthead
+   follows it. Reordered rather than moved, so the markup keeps one shape for
+   every view. */
+body.view-photo {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+body.view-photo main         { order: 1; }
+body.view-photo .mast        { order: 2; padding-top: 32px; }
+body.view-photo .site-footer { order: 3; }
+
+/* the masthead's rule belongs on whichever side faces the content */
+body.view-photo .mast::after {
+  bottom: auto;
+  top: 0;
+  border-bottom: none;
+  border-top: var(--rule) solid var(--border);
+}
+
+/* Where this picture sits among its number's — the old header's second line,
+   kept as a fact under the picture rather than a heading above it. */
+.photo-position {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-family: var(--number-font);
+  margin-top: 2px;
+}
+
+.page-top-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* ---- night mode switch ---- */
+/* Square, like everything else here, and it doesn't slide: the design
+   system takes no animation, so the knob simply changes side. */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.theme-switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  border: var(--frame) solid var(--border);
+  background: var(--cell-bg);
+  cursor: pointer;
+}
+
+.theme-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--ink);
+}
+
+.theme-switch[aria-checked="true"]::after { left: 20px; }
+
+.theme-switch:hover { background: var(--hover-bg); }
+
+/* One picture, centred and capped, so a tall photo doesn't run off the
+   bottom of the screen on the page whose whole job is showing it. */
+.photo-page .gallery-item {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.photo-page .gallery-item img {
+  max-height: 78vh;
+  object-fit: contain;
+}
+
+/* Neighbours flank the picture rather than sitting above it, so the
+   photograph is the first thing on the page. */
+.photo-frame {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.photo-frame img {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.photo-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  /* an arrow glyph on its own is a few pixels wide — this is what makes it
+     a target a thumb can actually hit */
+  min-height: 44px;
+  min-width: 28px;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.photo-step:hover { background: var(--hover-bg); text-decoration: none; }
+
+.photo-step-arrow { font-size: 18px; }
+
+/* The masthead copy, hidden until the screen is narrow enough to want it */
+.photo-steps { display: none; }
+
+/* On a narrow screen the arrows leave the picture's sides — every pixel of
+   width belongs to the photograph — and move into the masthead below it,
+   where there's room for their names. The back link goes too: the masthead's
+   wordmark and these arrows are enough to get anywhere from here. */
+@media (max-width: 700px) {
+  .photo-frame .photo-step { display: none; }
+  body.view-photo .back-link { display: none; }
+
+  .photo-steps {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+  }
+}
+
+.share-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.share-url {
+  font-family: var(--mono);
+  font-size: 12px;
+  border: var(--frame) solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 2px 4px;
+  min-width: 260px;
+  flex: 1;
+}
+
+.no-photos {
+  margin-top: 48px;
+  border: var(--frame) solid var(--border);
+  padding: 64px 24px;
+  text-align: center;
+  font-size: 18px;
+}
+
+/* ---------- board: freely draggable pictures ---------- */
+
+.board-canvas {
+  position: relative;
+  margin-top: 24px;
+  min-height: 400px;
+}
+
+.board-item {
+  position: absolute;
+  cursor: grab;
+  touch-action: none; /* let the pointer handlers own the gesture */
+  user-select: none;
+  background: var(--cell-bg);
+}
+
+.board-item.dragging {
+  cursor: grabbing;
+  outline: 1px solid var(--accent);
+}
+
+.board-item a { display: block; }
+
+.board-item img {
+  display: block;
+  width: 100%;
+  pointer-events: none; /* the wrapper handles the drag */
+}
+
+.board-reset {
+  font-family: inherit;
+  font-size: 13px;
+  border: var(--frame) solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.board-reset:hover { background: var(--hover-bg); }
+
+.board-hint { color: var(--ink-2); }
+
+/* an empty readout shouldn't reserve space next to its slider */
+.range-value:empty { min-width: 0; }
+
+/* ---------- grid lab ---------- */
+
+.lab-controls { margin-bottom: 16px; }
+
+/* Cell frames are driven from the lab's own controls. Width and style are
+   variables so one rule covers every combination; frames off keeps the box
+   and drops only the line, so nothing shifts on the page. */
+.lab-section .cell {
+  border-width: var(--lab-frame-width, 1px);
+  border-style: var(--lab-frame-style, solid);
+}
+
+.lab-noframes .cell { border-color: transparent; box-shadow: none; }
+
+/* --- two-tone frames ---
+   border-color takes four sides in order top/right/bottom/left, which gives
+   an exact bevel instead of the muddy shades a browser derives on its own.
+   Groove and ridge are two bevels facing opposite ways: the border draws the
+   outer band, and a pair of offset inset shadows draws the inner one — an
+   inset shadow pushed down-right paints along the top and left edges, and
+   the reverse paints along the bottom and right. */
+.lab-section.lab-frame-outset-bw .cell { border-color: #fff #000 #000 #fff; }
+.lab-section.lab-frame-inset-bw  .cell { border-color: #000 #fff #fff #000; }
+.lab-section.lab-frame-outset-grey .cell { border-color: #8a8a8a #000 #000 #8a8a8a; }
+.lab-section.lab-frame-inset-grey  .cell { border-color: #000 #8a8a8a #8a8a8a #000; }
+
+.lab-section.lab-frame-groove-bw .cell,
+.lab-section.lab-frame-ridge-bw .cell,
+.lab-section.lab-frame-groove-grey .cell,
+.lab-section.lab-frame-ridge-grey .cell {
+  border-width: calc(var(--lab-frame-width, 1px) / 2);
+}
+
+.lab-section.lab-frame-groove-bw .cell {
+  border-color: #000 #fff #fff #000;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #fff,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #000;
+}
+
+.lab-section.lab-frame-ridge-bw .cell {
+  border-color: #fff #000 #000 #fff;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #000,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #fff;
+}
+
+.lab-section.lab-frame-groove-grey .cell {
+  border-color: #000 #8a8a8a #8a8a8a #000;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #8a8a8a,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #000;
+}
+
+.lab-section.lab-frame-ridge-grey .cell {
+  border-color: #8a8a8a #000 #000 #8a8a8a;
+  box-shadow:
+    inset calc(var(--lab-frame-width, 1px) / 2) calc(var(--lab-frame-width, 1px) / 2) 0 0 #000,
+    inset calc(var(--lab-frame-width, 1px) / -2) calc(var(--lab-frame-width, 1px) / -2) 0 0 #8a8a8a;
+}
+
+/* --- page backgrounds --- these sit on <body>, so they dress the whole
+   page rather than the grid alone, and they have to outrank the site's
+   default dot pattern (a bare `body` rule). */
+body.lab-bg-none { background-image: none; }
+
+body.lab-bg-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.18) 1.5px, transparent 1.5px);
+  background-size: 40px 40px;
+}
+
+body.lab-bg-fine-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.22) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+body.lab-bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Small plus marks. Drawn as an SVG tile rather than gradients: a linear
+   gradient is uniform along its perpendicular axis, so it can only ever
+   produce full-height stripes, not short dashes. */
+body.lab-bg-cross {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M16 12.5v7M12.5 16h7' stroke='rgba(0,0,0,0.3)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 32px 32px;
+}
+
+body.lab-bg-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.10) 0 1px,
+    transparent 1px 12px
+  );
+}
+
+/* --- page font --- likewise applied to the whole page, numbers included */
+body.lab-font-serif {
+  font-family: var(--serif);
+  --number-font: var(--serif);
+}
+
+body.lab-font-mono {
+  font-family: var(--mono);
+  --number-font: var(--mono);
+}
+
+body.lab-font-mono .wm,
+body.lab-font-mono .mast-cta { font-family: var(--mono); }
+
+body.lab-font-serif .wm,
+body.lab-font-serif .mast-cta { font-family: var(--serif); }
+
+/* ---------- "people" page ---------- */
+
+/* wide tables scroll inside their own box rather than the whole page */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.people-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.people-table th,
+.people-table td {
+  border: var(--frame) solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.people-table th {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.people-table td.num { white-space: nowrap; }
+
+/* free text (places, comments) — capped so one long note can't stretch the
+   table past the point where the other columns stay readable */
+.people-table td.wrap {
+  white-space: normal;
+  max-width: 320px;
+  min-width: 160px;
+}
+
+.people-table tbody tr:hover { background: var(--hover-bg); }
+
+/* ---------- "exif check" diagnostic page ---------- */
+
+.exif-check-input {
+  font: inherit;
+  margin: 12px 0;
+  max-width: 100%;
+}
+
+.exif-check-out {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  border: var(--frame) solid var(--border);
+  padding: 12px;
+  margin-top: 12px;
+  min-height: 24px;
+}
+
+.exif-check-out:empty { display: none; }
+
+/* the page is admin-only, so it opens on a lock instead of the table */
+.people-lock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.people-lock input {
+  font: inherit;
+  padding: 6px 8px;
+  border: var(--frame) solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  min-width: 240px;
+}
+
+.people-lock-err {
+  width: 100%;
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.people-lock-link {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: normal;
+  font-family: var(--mono);
+}
+
+/* ---------- Upload panel (inline, per-number / misc) ---------- */
+
+.upload-panel {
+  margin-top: 64px;
+  border: var(--frame) solid var(--border);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--cell-bg);
+}
+
+.upload-panel .kicker { font-size: 12px; color: var(--ink-2); }
+.upload-panel h3 { font-size: 20px; font-weight: bold; margin: 0; }
+
+.dropzone {
+  border: var(--frame) solid var(--border);
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.dropzone.dragover { background: var(--hover-bg); }
+.dropzone .pick-text { text-decoration: underline; }
+.dropzone input[type="file"] { display: none; }
+
+.upload-helper { font-size: 12px; color: var(--ink-2); margin: 0; }
+.upload-status { font-size: 15px; min-height: 1.3em; }
+.upload-status.err { color: var(--red); }
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.field-label input[type="text"],
+.field-label input[type="date"],
+.field-label textarea {
+  border: var(--frame) solid var(--border);
+  padding: 5px 6px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--cell-bg);
+  color: var(--ink);
+  width: 100%;
+}
+
+.field-label textarea { resize: vertical; }
+
+.field-label input:disabled {
+  background: var(--hover-bg);
+  color: var(--ink-2);
+}
+
+.field-pair-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-pair-row .field-label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.meta-field-block { margin-bottom: 0; }
+
+/* Hints sit tight under the field they describe; the form's own flex gap
+   then provides the single uniform space to the next row. Paragraph
+   margins are zeroed so they can't add a second, larger gap on top. */
+.number-hint {
+  font-size: 11px;
+  color: var(--ink-2);
+  margin: -4px 0 0;
+}
+
+/* the number-guess hint is empty until a photo is read — don't reserve a
+   row's worth of space for text that isn't there */
+.number-hint:empty { display: none; }
+
+.meta-field-block .number-hint,
+.meta-field-block .upload-helper {
+  margin-top: 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.consent-label {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.consent-label input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.terms-heading {
+  font-size: 24px;
+  font-weight: bold;
+  margin: 24px 0 16px;
+}
+
+.terms-copy {
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  max-width: 65ch;
+}
+
+ul.terms-copy {
+  padding-left: 20px;
+}
+
+ul.terms-copy li {
+  margin-bottom: 6px;
+}
+
+/* ---------- "add a number" modal ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  background: var(--cell-bg);
+  border: var(--frame) solid var(--border);
+  padding: 20px 24px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title { font-size: 20px; font-weight: bold; }
+
+.modal-close {
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.modal-close:hover { background: var(--hover-bg); text-decoration: none; }
+
+.modal .dropzone { padding: 10px; font-size: 13px; }
+
+.modal-submit {
+  border: var(--frame) solid var(--border);
+  background: var(--cell-bg);
+  color: var(--ink);
+  padding: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.modal-submit:active { background: var(--ink); color: var(--cell-bg); }
+.modal-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 16px auto 0;
+  padding: 16px 24px;
+  border-top: var(--rule) solid var(--border);
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.site-footer span {
+  display: block;
+}
+
+.site-footer span + span {
+  margin-top: 4px;
+}
+
+body.view-grid .site-footer { max-width: none; }
